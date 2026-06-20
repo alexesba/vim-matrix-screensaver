@@ -18,7 +18,6 @@ local ACTIVITY_EVENTS = {
   'CmdlineLeave',
   'WinEnter',
   'BufEnter',
-  'FocusGained',
   'CompleteDone',
 }
 

@@ -236,6 +236,34 @@ local function animate()
   render_frame()
 end
 
+local focus_group = nil
+
+local function remove_focus_handler()
+  if focus_group then
+    pcall(vim.api.nvim_clear_autocmds, { group = focus_group })
+    focus_group = nil
+  end
+end
+
+local function install_focus_handler()
+  remove_focus_handler()
+  focus_group = vim.api.nvim_create_augroup('MatrixFocus', { clear = true })
+  vim.api.nvim_create_autocmd({ 'FocusGained', 'VimResume' }, {
+    group = focus_group,
+    callback = function()
+      if not state.run then
+        return
+      end
+      vim.schedule(function()
+        if state.run then
+          animate()
+          pcall(vim.cmd, 'redraw')
+        end
+      end)
+    end,
+  })
+end
+
 local function init_grid()
   state.grid = {}
   state.hls = {}
@@ -438,15 +466,26 @@ local function init()
 
   define_highlights()
   reset()
+  install_focus_handler()
   return true
 end
 
 local function drain_typeahead()
-  while vim.fn.getchar(1) ~= 0 do
+  local expr = vim.fn.has('nvim-0.10') == 1 and { noblock = true } or 1
+  for _ = 1, 256 do
+    local ok, c = pcall(vim.fn.getchar, expr)
+    if not ok or c == 0 then
+      break
+    end
   end
 end
 
 local function install_exit_keys(shutdown_fn, is_shutting_down)
+  local opts = { buffer = state.buf, silent = true, nowait = true }
+  for _, key in ipairs({ '<LeftMouse>', '<RightMouse>' }) do
+    pcall(vim.keymap.set, 'n', key, shutdown_fn, opts)
+  end
+
   if type(vim.on_key) == 'function' then
     state.key_ns = vim.api.nvim_create_namespace('matrix_keys')
     vim.on_key(function(_key)
@@ -462,7 +501,6 @@ local function install_exit_keys(shutdown_fn, is_shutting_down)
     return
   end
 
-  local opts = { buffer = state.buf, silent = true, nowait = true }
   for c = 32, 126 do
     pcall(vim.keymap.set, 'n', vim.fn.nr2char(c), shutdown_fn, opts)
   end
@@ -491,6 +529,7 @@ end
 
 local function cleanup()
   remove_exit_keys()
+  remove_focus_handler()
   pcall(restore_cursor)
 
   if saved.go ~= nil then
@@ -523,7 +562,7 @@ local function cleanup()
     vim.cmd('bwipe! ' .. saved.newbuf)
   end
 
-  drain_typeahead()
+  pcall(drain_typeahead)
   saved = {}
 
   pcall(function()
