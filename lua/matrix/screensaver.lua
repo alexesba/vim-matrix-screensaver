@@ -19,10 +19,13 @@ local function random_char()
   return state.chars[rand() % state.char_count + 1]
 end
 
-local function create_object(obj)
+local AMBIENT_CHANCE = 18 -- percent of empty cells that flicker each frame
+
+local function create_object(obj, min_reserve)
+  min_reserve = min_reserve or 2
   for _ = 1, state.columns * 4 do
     local x = rand() % state.columns
-    if state.reserve[x] > 4 then
+    if state.reserve[x] > min_reserve then
       obj.x = x
       break
     end
@@ -33,8 +36,31 @@ local function create_object(obj)
   obj.y = 1
   obj.t = rand() % state.speeds[obj.x]
   obj.head = rand() % 4
-  obj.len = rand() % state.height + 3
-  state.reserve[obj.x] = 1 - obj.len
+  obj.len = rand() % math.max(4, math.floor(state.height * 0.75)) + 4
+  state.reserve[obj.x] = obj.y - obj.len
+end
+
+local function seed_column(col)
+  local obj = {
+    x = col,
+    y = rand() % state.height + 1,
+    t = rand() % state.speeds[col],
+    head = rand() % 4,
+    len = rand() % math.max(4, math.floor(state.height * 0.75)) + 4,
+  }
+  state.reserve[col] = obj.y - obj.len
+  return obj
+end
+
+local function add_ambient_chars()
+  for row = 1, state.height do
+    for col = 1, state.width do
+      if state.hls[row][col] == 'hidden' and rand() % 100 < AMBIENT_CHANCE then
+        state.grid[row][col] = random_char()
+        state.hls[row][col] = 'normal'
+      end
+    end
+  end
 end
 
 local function set_cell(row, col, char, hl)
@@ -133,6 +159,7 @@ local function animate()
     obj.t = obj.t - 1
   end
 
+  add_ambient_chars()
   render_frame()
 end
 
@@ -150,9 +177,6 @@ local function init_grid()
 end
 
 local function window_width()
-  if vim.fn.winnr('$') == 1 then
-    return vim.o.columns
-  end
   return vim.api.nvim_win_get_width(state.win)
 end
 
@@ -177,13 +201,21 @@ local function reset()
   init_grid()
 
   state.objects = {}
-  local obj_count = math.max(0, state.columns - 2)
-  for _ = 1, obj_count do
+  for col = 0, state.columns - 1 do
+    table.insert(state.objects, seed_column(col))
+  end
+
+  local extra_streams = math.max(4, math.floor(state.columns / 3))
+  for _ = 1, extra_streams do
     local obj = {}
-    create_object(obj)
+    create_object(obj, 1)
     if obj.x ~= nil then
       table.insert(state.objects, obj)
     end
+  end
+
+  for _ = 1, 3 do
+    add_ambient_chars()
   end
 
   render_frame()
