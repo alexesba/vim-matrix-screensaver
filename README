@@ -1,12 +1,79 @@
 vim-matrix-screensaver
 ======================
 
-Matrix Screen for VIM
+Matrix digital-rain screensaver for Neovim.
 
-http://www.vim.org/scripts/script.php?script_id=1189
-https://github.com/uguu-org/vim-matrix-screensaver
+Originally by [Don Yang](https://uguu.org) ([upstream](https://github.com/uguu-org/vim-matrix-screensaver)).
+This fork rewrites the animation engine in Lua for Neovim and fixes rendering issues
+from the original Vimscript version.
 
-Usage:
-1. Source matrix.vim
-2. Execute :Matrix to start
-3. Press any key a few times to exit
+Features
+--------
+
+- Full-screen Matrix effect with stable green-on-black colors
+- Smooth animation without horizontal jitter
+- Hidden cursor and command line while running
+- Press any key to exit and restore your session
+- Optional speed tuning via command arguments
+- Headless test suite and GitHub Actions CI
+
+Requirements
+------------
+
+- Neovim 0.5+ (0.11+ recommended for best key-handling via `vim.on_key`)
+
+Install
+-------
+
+Clone into your Neovim data directory:
+
+    git clone https://github.com/alexesba/vim-matrix-screensaver.git \
+      ~/.local/share/nvim/site/pack/plugins/start/vim-matrix-screensaver
+
+Or add the repository root to `runtimepath`.
+
+Usage
+-----
+
+1. Open Neovim
+2. Run `:Matrix` to start the screensaver
+3. Press any key to exit
+
+Optional arguments set the per-column delay range (defaults: `1` and `5`):
+
+    :Matrix 1 3
+
+Lower values animate faster. Both arguments must be positive integers and
+`maxdelay` must be greater than `mindelay`.
+
+Project layout
+--------------
+
+    plugin/matrix.lua          :Matrix command entry point
+    lua/matrix/screensaver.lua Animation engine
+    tests/matrix_spec.lua      Test suite
+    scripts/run_tests.sh       Test runner
+
+Tests
+-----
+
+    ./scripts/run_tests.sh
+
+Requires Neovim on your `PATH`. The suite verifies that the plugin loads,
+`:Matrix` is registered, the random number generator stays stable, and the
+screensaver starts and stops cleanly in headless mode.
+
+Known limitations
+-----------------
+
+- Requires a single-window layout when starting (same as the original plugin).
+  Save modified buffers before running to avoid extra windows on exit.
+- If the window is resized below 8 rows or 10 columns while running, the
+  screensaver stops automatically.
+- Resizing below that threshold during a session can still lose buffer state,
+  as in the original — avoid making the window too small while it is active.
+
+License
+-------
+
+MIT — see [license.txt](license.txt).
