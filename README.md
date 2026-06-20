@@ -57,15 +57,18 @@ to apply auto-start changes without restarting Neovim.
 
 ```lua
 {
-  dir = "~/Projects/vim-matrix-screensaver",
-  name = "matrix",
+  "alexesba/vim-matrix-screensaver",
   main = "matrix", -- required so lazy calls require("matrix").setup(opts)
   lazy = false,
   opts = {
-    density = "balanced",
-    charset = "movie",
-    auto_start = true,
-    idle_seconds = 60,
+    density = "balanced",        -- default
+    charset = "movie",           -- default ("movie" | "classic")
+    min_delay = 1,               -- default
+    max_delay = 6,               -- default
+    tick_ms = 25,                -- default
+    -- ambient_chance = 5,        -- preset default (balanced); 0–100 overrides density
+    auto_start = true,           -- default: false
+    idle_seconds = 60,           -- default: 300
   },
 }
 ```
