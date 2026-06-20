@@ -170,6 +170,21 @@ local hl_groups = {
   head = 'MatrixHead',
 }
 
+local function clear_row_marks()
+  if not state.row_marks or not state.buf then
+    state.row_marks = {}
+    state.next_mark_id = 1
+    return
+  end
+  for _, marks in pairs(state.row_marks) do
+    for _, id in ipairs(marks) do
+      pcall(vim.api.nvim_buf_del_extmark, state.buf, state.ns, id)
+    end
+  end
+  state.row_marks = {}
+  state.next_mark_id = 1
+end
+
 local function build_row(row)
   local grid_row = state.grid[row]
   local offsets = {}
@@ -185,11 +200,8 @@ local function build_row(row)
   return table.concat(parts), offsets
 end
 
-local function render_row(row)
-  local line, offsets = build_row(row)
-  vim.api.nvim_buf_set_lines(state.buf, row - 1, row, false, { line })
-  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, row - 1, row)
-
+local function hl_runs(row, offsets)
+  local runs = {}
   local col = 1
   while col <= state.width do
     local hl = state.hls[row][col]
@@ -197,15 +209,44 @@ local function render_row(row)
     while col <= state.width and state.hls[row][col] == hl do
       col = col + 1
     end
-    vim.api.nvim_buf_add_highlight(
-      state.buf,
-      state.ns,
-      hl_groups[hl],
-      row - 1,
-      offsets[hl_start],
-      offsets[col]
-    )
+    runs[#runs + 1] = {
+      start_col = offsets[hl_start],
+      end_col = offsets[col],
+      hl_group = hl_groups[hl],
+    }
   end
+  return runs
+end
+
+local function render_row(row)
+  local line, offsets = build_row(row)
+  vim.api.nvim_buf_set_lines(state.buf, row - 1, row, false, { line })
+
+  local runs = hl_runs(row, offsets)
+  local prev_marks = state.row_marks[row] or {}
+  local marks = {}
+
+  for i, run in ipairs(runs) do
+    local id = prev_marks[i]
+    if not id then
+      id = state.next_mark_id
+      state.next_mark_id = state.next_mark_id + 1
+    end
+    marks[i] = id
+    vim.api.nvim_buf_set_extmark(state.buf, state.ns, row - 1, run.start_col, {
+      id = id,
+      end_row = row - 1,
+      end_col = run.end_col,
+      hl_group = run.hl_group,
+      strict = false,
+    })
+  end
+
+  for i = #runs + 1, #prev_marks do
+    pcall(vim.api.nvim_buf_del_extmark, state.buf, state.ns, prev_marks[i])
+  end
+
+  state.row_marks[row] = marks
 end
 
 local function render_frame(full)
@@ -316,6 +357,7 @@ local function reset()
   end
 
   init_grid()
+  clear_row_marks()
   state.ambient_cells = {}
   mark_all_dirty()
 
@@ -407,6 +449,8 @@ local function init()
   state.win = vim.api.nvim_get_current_win()
   state.buf = vim.api.nvim_get_current_buf()
   state.ns = vim.api.nvim_create_namespace('matrix')
+  state.row_marks = {}
+  state.next_mark_id = 1
 
   vim.bo.buftype = 'nofile'
   vim.bo.bufhidden = 'delete'
