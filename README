@@ -67,13 +67,14 @@ vim.g.matrix = {
   min_delay = 1,
   max_delay = 6,
   tick_ms = 25,
-  ambient_chance = 7,  -- override preset: background flicker (0-100)
+  ambient_chance = 4,  -- override preset: background flicker (0-100)
 }
 ```
 
-Defaults use the `balanced` preset: moderate trail length, light ambient
-flicker, and a few extra streams. Use `density = 'sparse'` for the original
-open look, or `density = 'dense'` for a busier screen.
+Defaults use the `balanced` preset: moderate trail length, light ephemeral
+background flicker (clears each frame so the screen does not fill up), and a
+few extra streams. Use `density = 'sparse'` for the original open look, or
+`density = 'dense'` for a busier screen.
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening
