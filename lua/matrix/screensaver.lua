@@ -5,8 +5,8 @@ local M = {}
 local session_file = vim.fn.tempname()
 local SEED_MOD = 2147483647
 
-local mindelay = 1
-local maxdelay = 5
+local mindelay = 2
+local maxdelay = 8
 
 local state = {}
 
@@ -463,8 +463,8 @@ local function parse_args(args)
   end
 
   if #delay_args == 0 then
-    mindelay = 1
-    maxdelay = 5
+    mindelay = 2
+    maxdelay = 8
     return true, selected_charset
   end
 
@@ -517,7 +517,7 @@ function M.start(args)
   end
 
   local timer = vim.loop.new_timer()
-  local tick_ms = 20
+  local tick_ms = 30
   local shutdown_started = false
 
   local function shutdown()
