@@ -9,11 +9,11 @@ local presets = {
     trail_depth = 1,
   },
   balanced = {
-    ambient_chance = 7,
-    min_tail_length = 6,
-    tail_length_ratio = 0.5,
+    ambient_chance = 4,
+    min_tail_length = 5,
+    tail_length_ratio = 0.4,
     extra_streams = -1,
-    trail_depth = 2,
+    trail_depth = 1,
   },
   dense = {
     ambient_chance = 14,

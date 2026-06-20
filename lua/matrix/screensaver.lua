@@ -58,23 +58,42 @@ local function create_object(obj, min_reserve)
   state.reserve[obj.x] = 1 - obj.len
 end
 
-local function add_ambient_chars()
-  for row = 1, state.height do
-    for col = 1, state.width do
-      if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
-        state.grid[row][col] = random_char()
-        state.hls[row][col] = 'normal'
-      end
-    end
-  end
-end
-
 local function set_cell(row, col, char, hl)
   if row < 1 or row > state.height or col < 1 or col > state.width then
     return
   end
   state.grid[row][col] = char
   state.hls[row][col] = hl
+  if state.ambient then
+    state.ambient[row][col] = false
+  end
+end
+
+local function decay_ambient()
+  if not state.ambient or ambient_chance <= 0 then
+    return
+  end
+  for row = 1, state.height do
+    for col = 1, state.width do
+      if state.ambient[row][col] then
+        state.grid[row][col] = ' '
+        state.hls[row][col] = 'hidden'
+        state.ambient[row][col] = false
+      end
+    end
+  end
+end
+
+local function add_ambient_chars()
+  for row = 1, state.height do
+    for col = 1, state.width do
+      if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
+        state.grid[row][col] = random_char()
+        state.hls[row][col] = 'normal'
+        state.ambient[row][col] = true
+      end
+    end
+  end
 end
 
 local function draw_object(obj)
@@ -166,6 +185,8 @@ local function render_frame()
 end
 
 local function animate()
+  decay_ambient()
+
   for _, obj in ipairs(state.objects) do
     if obj.t <= 0 then
       if obj.y - obj.len <= state.height then
@@ -191,12 +212,15 @@ end
 local function init_grid()
   state.grid = {}
   state.hls = {}
+  state.ambient = {}
   for row = 1, state.height do
     state.grid[row] = {}
     state.hls[row] = {}
+    state.ambient[row] = {}
     for col = 1, state.width do
       state.grid[row][col] = ' '
       state.hls[row][col] = 'hidden'
+      state.ambient[row][col] = false
     end
   end
 end
@@ -237,7 +261,7 @@ local function reset()
 
   local extras = extra_streams
   if extras < 0 then
-    extras = math.max(2, math.floor(state.columns / 5))
+    extras = math.max(2, math.floor(state.columns / 8))
   end
   for _ = 1, extras do
     local obj = {}

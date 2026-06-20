@@ -35,7 +35,7 @@ test('config provides balanced defaults', function()
   assert(cfg.density == 'balanced')
   assert(cfg.min_delay == 1)
   assert(cfg.max_delay == 6)
-  assert(cfg.ambient_chance == 7)
+  assert(cfg.ambient_chance == 4)
 end)
 
 test('movie charset uses single-width Matrix glyphs', function()
