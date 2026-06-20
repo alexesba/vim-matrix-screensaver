@@ -3,6 +3,8 @@ vim-matrix-screensaver
 
 Matrix digital-rain screensaver for Neovim.
 
+![Matrix digital rain preview](docs/preview.gif)
+
 Originally by [Don Yang](https://uguu.org) ([upstream](https://github.com/uguu-org/vim-matrix-screensaver)).
 This fork rewrites the animation engine in Lua for Neovim and fixes rendering issues
 from the original Vimscript version.
