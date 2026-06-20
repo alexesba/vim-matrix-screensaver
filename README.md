@@ -67,7 +67,7 @@ to apply auto-start changes without restarting Neovim.
     charset = "movie",           -- default ("movie" | "classic")
     min_delay = 1,               -- default
     max_delay = 6,               -- default
-    tick_ms = 25,                -- default
+    tick_ms = 33,                -- default (~30 fps)
     -- ambient_chance = 5,        -- preset default (balanced); 0–100 overrides density
     auto_start = true,           -- default: false
     idle_seconds = 60,           -- default: 300
@@ -83,7 +83,7 @@ to apply auto-start changes without restarting Neovim.
 | `charset` | `movie` | `movie` or `classic` |
 | `min_delay` | `1` | Fastest per-column step (animation ticks) |
 | `max_delay` | `6` | Slowest per-column step range |
-| `tick_ms` | `25` | Milliseconds between animation frames |
+| `tick_ms` | `33` | Milliseconds between animation frames (~30 fps) |
 | `ambient_chance` | preset | Background flicker in empty cells (0–100); overrides preset |
 | `auto_start` | `false` | Start Matrix after idle time |
 | `idle_seconds` | `300` | Seconds of inactivity before auto-start |

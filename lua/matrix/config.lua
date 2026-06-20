@@ -29,7 +29,7 @@ local defaults = vim.tbl_extend('force', {
   charset = 'movie',
   min_delay = 1,
   max_delay = 6,
-  tick_ms = 25,
+  tick_ms = 33,
   auto_start = false,
   idle_seconds = 300,
 }, presets.balanced)
