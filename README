@@ -62,16 +62,18 @@ Add this to your Neovim config to tune the screensaver globally:
 
 ```lua
 vim.g.matrix = {
-  charset = 'movie',   -- 'movie' or 'classic'
-  min_delay = 1,       -- lower = faster column updates
-  max_delay = 6,       -- upper bound per-column delay
-  tick_ms = 25,        -- animation timer interval in milliseconds
-  ambient_chance = 0,  -- background flicker (0 = off, like master branch)
+  density = 'balanced',  -- 'sparse' (master-like), 'balanced', or 'dense'
+  charset = 'movie',
+  min_delay = 1,
+  max_delay = 6,
+  tick_ms = 25,
+  ambient_chance = 7,  -- override preset: background flicker (0-100)
 }
 ```
 
-Defaults are `min_delay = 1`, `max_delay = 6`, `tick_ms = 25`, and
-`ambient_chance = 0` (sparse falling columns; raise for a busier screen).
+Defaults use the `balanced` preset: moderate trail length, light ambient
+flicker, and a few extra streams. Use `density = 'sparse'` for the original
+open look, or `density = 'dense'` for a busier screen.
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening

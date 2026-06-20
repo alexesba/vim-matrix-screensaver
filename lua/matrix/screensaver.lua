@@ -11,6 +11,10 @@ local mindelay = settings.min_delay
 local maxdelay = settings.max_delay
 local tick_ms = settings.tick_ms
 local ambient_chance = settings.ambient_chance
+local min_tail_length = settings.min_tail_length
+local tail_length_ratio = settings.tail_length_ratio
+local extra_streams = settings.extra_streams
+local trail_depth = settings.trail_depth
 local default_charset = settings.charset
 
 local state = {}
@@ -30,10 +34,16 @@ local function random_char()
   return '0'
 end
 
-local function create_object(obj)
+local function tail_length()
+  local span = math.max(1, math.floor(state.height * tail_length_ratio))
+  return rand() % span + min_tail_length
+end
+
+local function create_object(obj, min_reserve)
+  min_reserve = min_reserve or 4
   for _ = 1, state.columns * 4 do
     local x = rand() % state.columns
-    if state.reserve[x] > 4 then
+    if state.reserve[x] > min_reserve then
       obj.x = x
       break
     end
@@ -44,7 +54,7 @@ local function create_object(obj)
   obj.y = 1
   obj.t = rand() % state.speeds[obj.x]
   obj.head = rand() % 4
-  obj.len = rand() % state.height + 3
+  obj.len = tail_length()
   state.reserve[obj.x] = 1 - obj.len
 end
 
@@ -74,8 +84,11 @@ local function draw_object(obj)
   if y <= state.height then
     if obj.head ~= 0 then
       set_cell(y, x, random_char(), 'head')
-      if y > 1 then
-        set_cell(y - 1, x, random_char(), rand() % 2 == 0 and 'bright' or 'normal')
+      for offset = 1, trail_depth do
+        if y > offset then
+          local hl = offset == 1 and 'bright' or 'normal'
+          set_cell(y - offset, x, random_char(), hl)
+        end
       end
     else
       set_cell(y, x, random_char(), rand() % 2 == 0 and 'bright' or 'normal')
@@ -217,6 +230,18 @@ local function reset()
   for _ = 1, obj_count do
     local obj = {}
     create_object(obj)
+    if obj.x ~= nil then
+      table.insert(state.objects, obj)
+    end
+  end
+
+  local extras = extra_streams
+  if extras < 0 then
+    extras = math.max(2, math.floor(state.columns / 5))
+  end
+  for _ = 1, extras do
+    local obj = {}
+    create_object(obj, 2)
     if obj.x ~= nil then
       table.insert(state.objects, obj)
     end
@@ -458,6 +483,10 @@ local function parse_args(args)
   maxdelay = settings.max_delay
   tick_ms = settings.tick_ms
   ambient_chance = settings.ambient_chance
+  min_tail_length = settings.min_tail_length
+  tail_length_ratio = settings.tail_length_ratio
+  extra_streams = settings.extra_streams
+  trail_depth = settings.trail_depth
 
   local selected_charset = settings.charset
   local delay_args = {}
