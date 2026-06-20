@@ -41,13 +41,20 @@ local function rand()
 end
 
 local function random_char()
-  for _ = 1, 12 do
-    local char = state.chars[rand() % state.char_count + 1]
-    if vim.fn.strdisplaywidth(char, 0) == 1 then
-      return char
-    end
+  return state.chars[rand() % state.char_count + 1]
+end
+
+local function mark_dirty(row)
+  if state.dirty_rows then
+    state.dirty_rows[row] = true
   end
-  return '0'
+end
+
+local function mark_all_dirty()
+  state.dirty_rows = {}
+  for row = 1, state.height do
+    state.dirty_rows[row] = true
+  end
 end
 
 local function tail_length()
@@ -94,31 +101,38 @@ local function set_cell(row, col, char, hl)
   if state.ambient then
     state.ambient[row][col] = false
   end
+  mark_dirty(row)
 end
 
 local function decay_ambient()
-  if not state.ambient or ambient_chance <= 0 then
+  if not state.ambient_cells or ambient_chance <= 0 then
     return
   end
-  for row = 1, state.height do
-    for col = 1, state.width do
-      if state.ambient[row][col] then
-        state.grid[row][col] = ' '
-        state.hls[row][col] = 'hidden'
-        state.ambient[row][col] = false
-      end
-    end
+  for i = #state.ambient_cells, 1, -1 do
+    local cell = state.ambient_cells[i]
+    local row, col = cell.row, cell.col
+    state.grid[row][col] = ' '
+    state.hls[row][col] = 'hidden'
+    state.ambient[row][col] = false
+    mark_dirty(row)
+    table.remove(state.ambient_cells, i)
   end
 end
 
 local function add_ambient_chars()
-  for row = 1, state.height do
-    for col = 1, state.width do
-      if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
-        state.grid[row][col] = random_char()
-        state.hls[row][col] = 'dim'
-        state.ambient[row][col] = true
-      end
+  local attempts = math.floor(state.width * state.height * ambient_chance / 100)
+  if attempts <= 0 then
+    return
+  end
+  for _ = 1, attempts do
+    local row = rand() % state.height + 1
+    local col = rand() % state.width + 1
+    if state.hls[row][col] == 'hidden' then
+      state.grid[row][col] = random_char()
+      state.hls[row][col] = 'dim'
+      state.ambient[row][col] = true
+      table.insert(state.ambient_cells, { row = row, col = col })
+      mark_dirty(row)
     end
   end
 end
@@ -156,60 +170,59 @@ local hl_groups = {
   head = 'MatrixHead',
 }
 
-local function build_line(chars)
-  local line = table.concat(chars)
-  local display_width = vim.fn.strdisplaywidth(line, 0)
-  if display_width < state.width then
-    line = line .. string.rep(' ', state.width - display_width)
+local function build_row(row)
+  local grid_row = state.grid[row]
+  local offsets = {}
+  local parts = {}
+  local byte_pos = 0
+  for col = 1, state.width do
+    offsets[col] = byte_pos
+    local char = grid_row[col]
+    parts[col] = char
+    byte_pos = byte_pos + #char
   end
-  return line
+  offsets[state.width + 1] = byte_pos
+  return table.concat(parts), offsets
 end
 
-local function char_byte_range(line, char_start, char_end)
-  local byte_start = vim.fn.byteidx(line, char_start)
-  if byte_start < 0 then
-    byte_start = 0
+local function render_row(row)
+  local line, offsets = build_row(row)
+  vim.api.nvim_buf_set_lines(state.buf, row - 1, row, false, { line })
+  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, row - 1, row)
+
+  local col = 1
+  while col <= state.width do
+    local hl = state.hls[row][col]
+    local hl_start = col
+    while col <= state.width and state.hls[row][col] == hl do
+      col = col + 1
+    end
+    vim.api.nvim_buf_add_highlight(
+      state.buf,
+      state.ns,
+      hl_groups[hl],
+      row - 1,
+      offsets[hl_start],
+      offsets[col]
+    )
   end
-  local byte_end = vim.fn.byteidx(line, char_end + 1)
-  if byte_end < 0 then
-    byte_end = #line
-  end
-  return byte_start, byte_end
 end
 
-local function render_frame()
-  local lines = {}
-  for row = 1, state.height do
-    local chars = {}
-    for col = 1, state.width do
-      chars[col] = state.grid[row][col]
-    end
-    lines[row] = build_line(chars)
+local function render_frame(full)
+  if full then
+    mark_all_dirty()
   end
 
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
+  if not state.dirty_rows or not next(state.dirty_rows) then
+    return
+  end
 
   for row = 1, state.height do
-    local line = lines[row]
-    local col = 1
-    while col <= state.width do
-      local hl = state.hls[row][col]
-      local hl_start = col
-      while col <= state.width and state.hls[row][col] == hl do
-        col = col + 1
-      end
-      local byte_start, byte_end = char_byte_range(line, hl_start, col - 1)
-      vim.api.nvim_buf_add_highlight(
-        state.buf,
-        state.ns,
-        hl_groups[hl],
-        row - 1,
-        byte_start,
-        byte_end
-      )
+    if state.dirty_rows[row] then
+      render_row(row)
     end
   end
+  state.dirty_rows = {}
 end
 
 local function animate()
@@ -303,6 +316,8 @@ local function reset()
   end
 
   init_grid()
+  state.ambient_cells = {}
+  mark_all_dirty()
 
   state.objects = {}
   local obj_count = math.max(0, state.columns - 2)
@@ -747,6 +762,10 @@ function M._test_ambient_decay()
   state.ambient = {
     { false, true },
     { true, false },
+  }
+  state.ambient_cells = {
+    { row = 1, col = 2 },
+    { row = 2, col = 1 },
   }
 
   decay_ambient()
