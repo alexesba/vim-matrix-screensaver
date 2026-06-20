@@ -35,7 +35,11 @@ test('config provides balanced defaults', function()
   assert(cfg.density == 'balanced')
   assert(cfg.min_delay == 1)
   assert(cfg.max_delay == 6)
-  assert(cfg.ambient_chance == 4)
+  assert(cfg.ambient_chance == 5)
+end)
+
+test('ambient flicker clears each frame', function()
+  screensaver._test_ambient_decay()
 end)
 
 test('movie charset uses single-width Matrix glyphs', function()
@@ -51,13 +55,19 @@ test('classic charset uses printable ASCII', function()
   assert(chars[1] == '!', 'classic charset should start with ASCII glyphs')
 end)
 
+test(':Matrix defaults to movie charset', function()
+  local ok, name = screensaver._test_parse_args({})
+  assert(ok, 'bare :Matrix args should parse')
+  assert(name == 'movie', 'default charset should be movie')
+end)
+
 test('Matrix rejects invalid arguments', function()
   screensaver.start({ 'not', 'numbers' })
   assert(not screensaver.running(), 'screensaver should not run with invalid args')
 end)
 
 test(':Matrix starts and fills the screen', function()
-  vim.cmd('Matrix movie')
+  vim.cmd('Matrix')
 
   local started = vim.wait(3000, function()
     return screensaver.running()

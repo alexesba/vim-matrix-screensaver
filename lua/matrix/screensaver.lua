@@ -7,15 +7,31 @@ local session_file = vim.fn.tempname()
 local SEED_MOD = 2147483647
 
 local settings = config.get()
-local mindelay = settings.min_delay
-local maxdelay = settings.max_delay
-local tick_ms = settings.tick_ms
-local ambient_chance = settings.ambient_chance
-local min_tail_length = settings.min_tail_length
-local tail_length_ratio = settings.tail_length_ratio
-local extra_streams = settings.extra_streams
-local trail_depth = settings.trail_depth
-local default_charset = settings.charset
+
+local mindelay
+local maxdelay
+local tick_ms
+local ambient_chance
+local min_tail_length
+local tail_length_ratio
+local extra_streams
+local trail_depth
+local default_charset
+
+local function apply_settings(cfg)
+  cfg = cfg or config.get()
+  mindelay = cfg.min_delay
+  maxdelay = cfg.max_delay
+  tick_ms = cfg.tick_ms
+  ambient_chance = cfg.ambient_chance
+  min_tail_length = cfg.min_tail_length
+  tail_length_ratio = cfg.tail_length_ratio
+  extra_streams = cfg.extra_streams
+  trail_depth = cfg.trail_depth
+  default_charset = cfg.charset
+end
+
+apply_settings(settings)
 
 local state = {}
 
@@ -35,27 +51,38 @@ local function random_char()
 end
 
 local function tail_length()
+  if tail_length_ratio >= 1.0 then
+    return rand() % state.height + min_tail_length
+  end
   local span = math.max(1, math.floor(state.height * tail_length_ratio))
   return rand() % span + min_tail_length
 end
 
 local function create_object(obj, min_reserve)
   min_reserve = min_reserve or 4
-  for _ = 1, state.columns * 4 do
-    local x = rand() % state.columns
-    if state.reserve[x] > min_reserve then
-      obj.x = x
+  local x = nil
+  for threshold = min_reserve, 1, -1 do
+    for _ = 1, state.columns * 4 do
+      local candidate = rand() % state.columns
+      if state.reserve[candidate] > threshold then
+        x = candidate
+        break
+      end
+    end
+    if x ~= nil then
       break
     end
   end
-  if obj.x == nil then
-    return
+  if x == nil then
+    return false
   end
+  obj.x = x
   obj.y = 1
   obj.t = rand() % state.speeds[obj.x]
   obj.head = rand() % 4
   obj.len = tail_length()
   state.reserve[obj.x] = 1 - obj.len
+  return true
 end
 
 local function set_cell(row, col, char, hl)
@@ -89,7 +116,7 @@ local function add_ambient_chars()
     for col = 1, state.width do
       if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
         state.grid[row][col] = random_char()
-        state.hls[row][col] = 'normal'
+        state.hls[row][col] = 'dim'
         state.ambient[row][col] = true
       end
     end
@@ -123,6 +150,7 @@ end
 
 local hl_groups = {
   hidden = 'MatrixHidden',
+  dim = 'MatrixDim',
   normal = 'MatrixNormal',
   bright = 'MatrixBold',
   head = 'MatrixHead',
@@ -194,9 +222,8 @@ local function animate()
         obj.t = state.speeds[obj.x]
         obj.y = obj.y + 1
       else
-        create_object(obj)
-        if obj.x == nil then
-          obj.y = state.height + 1
+        if not create_object(obj) then
+          obj.t = rand() % 4 + 1
         end
       end
     end
@@ -253,8 +280,8 @@ local function reset()
   local obj_count = math.max(0, state.columns - 2)
   for _ = 1, obj_count do
     local obj = {}
-    create_object(obj)
-    if obj.x ~= nil then
+    if create_object(obj) then
+      obj.y = rand() % state.height + 1
       table.insert(state.objects, obj)
     end
   end
@@ -265,8 +292,8 @@ local function reset()
   end
   for _ = 1, extras do
     local obj = {}
-    create_object(obj, 2)
-    if obj.x ~= nil then
+    if create_object(obj, 2) then
+      obj.y = rand() % state.height + 1
       table.insert(state.objects, obj)
     end
   end
@@ -277,6 +304,7 @@ end
 local function define_highlights()
   local highlights = {
     MatrixHidden = { fg = '#000000', bg = '#000000', ctermfg = 'Black', ctermbg = 'Black' },
+    MatrixDim = { fg = '#004400', bg = '#000000', ctermfg = 'Black', ctermbg = 'Black' },
     MatrixNormal = { fg = '#008000', bg = '#000000', ctermfg = 'DarkGreen', ctermbg = 'Black' },
     MatrixBold = { fg = '#00ff00', bg = '#000000', ctermfg = 'LightGreen', ctermbg = 'Black' },
     MatrixHead = { fg = '#ffffff', bg = '#000000', ctermfg = 'White', ctermbg = 'Black' },
@@ -502,17 +530,9 @@ end
 local CHARSETS = { classic = true, movie = true }
 
 local function parse_args(args)
-  settings = config.get()
-  mindelay = settings.min_delay
-  maxdelay = settings.max_delay
-  tick_ms = settings.tick_ms
-  ambient_chance = settings.ambient_chance
-  min_tail_length = settings.min_tail_length
-  tail_length_ratio = settings.tail_length_ratio
-  extra_streams = settings.extra_streams
-  trail_depth = settings.trail_depth
+  apply_settings(config.get())
 
-  local selected_charset = settings.charset
+  local selected_charset = default_charset or 'movie'
   local delay_args = {}
   local idx = 1
 
@@ -548,6 +568,8 @@ function M.start(args)
     vim.api.nvim_echo({ { 'Matrix screensaver requires Neovim', 'ErrorMsg' } }, true, {})
     return
   end
+
+  apply_settings(config.get())
 
   local ok, selected_charset = parse_args(args)
   if not ok then
@@ -637,6 +659,11 @@ function M._test_prng(iterations)
 end
 
 ---@private Used by tests/matrix_spec.lua
+function M._test_parse_args(args)
+  return parse_args(args)
+end
+
+---@private Used by tests/matrix_spec.lua
 function M._test_charset(name)
   local chars = charset.get(name)
   assert(#chars > 0, 'charset is empty: ' .. name)
@@ -655,6 +682,34 @@ function M._test_charset(name)
     assert(has_katakana, 'movie charset should include halfwidth katakana')
   end
   return chars
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_ambient_decay()
+  apply_settings(config.get())
+  state.height = 2
+  state.width = 2
+  state.grid = {
+    { 'a', 'b' },
+    { 'c', 'd' },
+  }
+  state.hls = {
+    { 'normal', 'dim' },
+    { 'dim', 'normal' },
+  }
+  state.ambient = {
+    { false, true },
+    { true, false },
+  }
+
+  decay_ambient()
+
+  assert(state.grid[1][2] == ' ', 'ambient cell should clear')
+  assert(state.hls[1][2] == 'hidden', 'ambient cell should hide')
+  assert(not state.ambient[1][2], 'ambient flag should reset')
+  assert(state.grid[2][1] == ' ', 'ambient cell should clear')
+  assert(state.grid[1][1] == 'a', 'stream cell should remain')
+  assert(state.grid[2][2] == 'd', 'stream cell should remain')
 end
 
 return M

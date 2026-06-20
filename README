@@ -67,14 +67,24 @@ vim.g.matrix = {
   min_delay = 1,
   max_delay = 6,
   tick_ms = 25,
-  ambient_chance = 4,  -- override preset: background flicker (0-100)
+  ambient_chance = 5,  -- override preset: background flicker (0-100)
 }
 ```
 
-Defaults use the `balanced` preset: moderate trail length, light ephemeral
-background flicker (clears each frame so the screen does not fill up), and a
-few extra streams. Use `density = 'sparse'` for the original open look, or
-`density = 'dense'` for a busier screen.
+Defaults use the `balanced` preset:
+
+| Preset    | Ambient | Tail length        | Trail depth |
+|-----------|---------|--------------------|-------------|
+| `sparse`  | off     | full screen height | 1 cell      |
+| `balanced`| dim, 5% | full screen height | 2 cells     |
+| `dense`   | dim, 14%| full screen height | 2 cells     |
+
+Ambient flicker clears each frame so the screen does not fill up. Streams
+respawn reliably and start at random rows so columns stay long over time.
+Use `density = 'sparse'` for the original open look, or `density = 'dense'`
+for a busier screen.
+
+Settings in `vim.g.matrix` are reloaded each time you run `:Matrix`.
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening
@@ -84,7 +94,7 @@ thread](https://scifi.stackexchange.com/questions/137575/is-there-a-list-of-the-
 - Halfwidth katakana such as `ｱ`, `ｦ`, `ﾊ` (a curated subset from the film)
 - Arabic digits `0–5`, `7–9` (digit `6` is absent in the movie rain)
 - The letter `Z` (the only Roman letter in the opening sequence)
-- Punctuation: `: . " = * + - < > ¦ | _`
+- Punctuation: `: . " = * + - < > ¦ | _ ?`
 - Kanji `日` when the terminal renders it at single width
 
 In the film the glyphs are mirrored horizontally because the viewer is inside
@@ -109,8 +119,8 @@ Tests
     ./scripts/run_tests.sh
 
 Requires Neovim on your `PATH`. The suite verifies that the plugin loads,
-`:Matrix` is registered, the random number generator stays stable, and the
-screensaver starts and stops cleanly in headless mode.
+`:Matrix` defaults to the movie charset, ambient flicker does not accumulate,
+and the screensaver starts and stops cleanly in headless mode.
 
 Known limitations
 -----------------
