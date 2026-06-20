@@ -30,7 +30,11 @@ test('PRNG stays stable after many iterations', function()
 end)
 
 test('movie charset uses single-width Matrix glyphs', function()
-  screensaver._test_charset('movie')
+  local chars = screensaver._test_charset('movie')
+  local glyph_set = table.concat(chars)
+  assert(not glyph_set:find('6', 1, true), 'movie charset should omit digit 6')
+  assert(glyph_set:find('ｱ', 1, true), 'movie charset should include katakana')
+  assert(glyph_set:find('Z', 1, true), 'movie charset should include Z')
 end)
 
 test('classic charset uses printable ASCII', function()

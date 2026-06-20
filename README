@@ -55,9 +55,21 @@ Lower values animate faster. Both delay arguments must be positive integers and
 `maxdelay` must be greater than `mindelay`.
 
 The movie charset uses single-width characters only so columns stay aligned in
-the terminal. Symbols such as ♉ approximate the film's decorative glyphs; the
-exact bull's-head mark from *Revolutions* comes from a custom Matrix font and is
-not available in standard Unicode.
+the terminal. Glyphs are based on frame-by-frame analysis from the opening
+digital rain in *The Matrix* (see [this Stack Exchange
+thread](https://scifi.stackexchange.com/questions/137575/is-there-a-list-of-the-symbols-shown-in-the-matrixthe-symbols-rain-how-many)):
+
+- Halfwidth katakana such as `ｱ`, `ｦ`, `ﾊ` (a curated subset from the film)
+- Arabic digits `0–5`, `7–9` (digit `6` is absent in the movie rain)
+- The letter `Z` (the only Roman letter in the opening sequence)
+- Punctuation: `: . " = * + - < > ¦ | _`
+- Kanji `日` when the terminal renders it at single width
+
+In the film the glyphs are mirrored horizontally because the viewer is inside
+the code looking out ([Simon Whiteley, production
+designer](https://beforesandafters.com/secrets-of-the-matrix-code/)). Terminals
+cannot mirror fonts, so the plugin uses the documented Unicode characters
+directly.
 
 Project layout
 --------------

@@ -1,5 +1,17 @@
 local M = {}
 
+-- Film glyph research:
+-- https://scifi.stackexchange.com/questions/137575/
+-- The Matrix rain uses mirrored halfwidth katakana, Arabic digits (no 6),
+-- punctuation, the letter Z, and kanji such as 日. Terminals cannot mirror
+-- glyphs, so we use the documented Unicode characters directly.
+
+local MOVIE_KATAKANA = 'ｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜｰｼﾅﾓﾘｹﾒｴｷﾑｾｽﾀﾍ'
+local MOVIE_DIGITS = '012345789' -- digit 6 does not appear in the film rain
+local MOVIE_LATIN = 'Z' -- only Roman letter in the opening rain
+local MOVIE_PUNCTUATION = ':."=*+-<>¦|_'
+local MOVIE_KANJI = '日' -- day/sun; filtered out when the terminal renders it double-width
+
 local function is_single_width(char)
   return vim.fn.strdisplaywidth(char, 0) == 1
 end
@@ -30,14 +42,6 @@ local function chars_from_string(str)
   return chars
 end
 
-local function chars_from_range(first, last)
-  local chars = {}
-  for code = first, last do
-    table.insert(chars, vim.fn.nr2char(code))
-  end
-  return chars
-end
-
 function M.classic()
   local chars = {}
   for code = 33, 126 do
@@ -50,21 +54,11 @@ end
 
 function M.movie()
   local chars = {}
-
-  -- Halfwidth katakana: the glyph set used in the film's digital rain.
-  vim.list_extend(chars, chars_from_range(0xFF66, 0xFF9F))
-
-  -- Arabic numerals and Latin letters.
-  vim.list_extend(chars, chars_from_range(48, 57))
-  vim.list_extend(chars, chars_from_range(65, 90))
-  vim.list_extend(chars, chars_from_range(97, 122))
-
-  -- Turned-letter lookalikes that suggest reversed Roman characters.
-  vim.list_extend(chars, chars_from_string('∀ԁԃԄԆԇӘɐɑɔəɟɥʎʌ'))
-
-  -- Decorative symbols, including Taurus (bull motif from Revolutions).
-  vim.list_extend(chars, chars_from_string('±×÷·°¢£¥§¶†‡•♉♊♈'))
-
+  vim.list_extend(chars, chars_from_string(MOVIE_KATAKANA))
+  vim.list_extend(chars, chars_from_string(MOVIE_DIGITS))
+  vim.list_extend(chars, chars_from_string(MOVIE_LATIN))
+  vim.list_extend(chars, chars_from_string(MOVIE_PUNCTUATION))
+  vim.list_extend(chars, chars_from_string(MOVIE_KANJI))
   return filter_single_width(chars)
 end
 
