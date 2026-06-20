@@ -5,7 +5,7 @@ local defaults = {
   min_delay = 1,
   max_delay = 6,
   tick_ms = 25,
-  ambient_chance = 18,
+  ambient_chance = 0,
 }
 
 function M.get()

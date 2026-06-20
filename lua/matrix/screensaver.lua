@@ -30,11 +30,10 @@ local function random_char()
   return '0'
 end
 
-local function create_object(obj, min_reserve)
-  min_reserve = min_reserve or 2
+local function create_object(obj)
   for _ = 1, state.columns * 4 do
     local x = rand() % state.columns
-    if state.reserve[x] > min_reserve then
+    if state.reserve[x] > 4 then
       obj.x = x
       break
     end
@@ -45,20 +44,8 @@ local function create_object(obj, min_reserve)
   obj.y = 1
   obj.t = rand() % state.speeds[obj.x]
   obj.head = rand() % 4
-  obj.len = rand() % math.max(4, math.floor(state.height * 0.75)) + 4
-  state.reserve[obj.x] = obj.y - obj.len
-end
-
-local function seed_column(col)
-  local obj = {
-    x = col,
-    y = rand() % state.height + 1,
-    t = rand() % state.speeds[col],
-    head = rand() % 4,
-    len = rand() % math.max(4, math.floor(state.height * 0.75)) + 4,
-  }
-  state.reserve[col] = obj.y - obj.len
-  return obj
+  obj.len = rand() % state.height + 3
+  state.reserve[obj.x] = 1 - obj.len
 end
 
 local function add_ambient_chars()
@@ -182,7 +169,9 @@ local function animate()
     obj.t = obj.t - 1
   end
 
-  add_ambient_chars()
+  if ambient_chance > 0 then
+    add_ambient_chars()
+  end
   render_frame()
 end
 
@@ -224,21 +213,13 @@ local function reset()
   init_grid()
 
   state.objects = {}
-  for col = 0, state.columns - 1 do
-    table.insert(state.objects, seed_column(col))
-  end
-
-  local extra_streams = math.max(4, math.floor(state.columns / 3))
-  for _ = 1, extra_streams do
+  local obj_count = math.max(0, state.columns - 2)
+  for _ = 1, obj_count do
     local obj = {}
-    create_object(obj, 1)
+    create_object(obj)
     if obj.x ~= nil then
       table.insert(state.objects, obj)
     end
-  end
-
-  for _ = 1, 3 do
-    add_ambient_chars()
   end
 
   render_frame()

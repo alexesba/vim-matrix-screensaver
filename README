@@ -66,11 +66,12 @@ vim.g.matrix = {
   min_delay = 1,       -- lower = faster column updates
   max_delay = 6,       -- upper bound per-column delay
   tick_ms = 25,        -- animation timer interval in milliseconds
-  ambient_chance = 18, -- background flicker density (0-100)
+  ambient_chance = 0,  -- background flicker (0 = off, like master branch)
 }
 ```
 
-Defaults are `min_delay = 1`, `max_delay = 6`, and `tick_ms = 25`.
+Defaults are `min_delay = 1`, `max_delay = 6`, `tick_ms = 25`, and
+`ambient_chance = 0` (sparse falling columns; raise for a busier screen).
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening
