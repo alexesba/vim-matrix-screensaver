@@ -525,6 +525,10 @@ local function cleanup()
 
   drain_typeahead()
   saved = {}
+
+  pcall(function()
+    require('matrix.idle').resume()
+  end)
 end
 
 local CHARSETS = { classic = true, movie = true }
@@ -599,6 +603,10 @@ function M.start(args)
     vim.api.nvim_echo({ { 'Can not create window', 'ErrorMsg' } }, true, {})
     return
   end
+
+  pcall(function()
+    require('matrix.idle').pause()
+  end)
 
   local timer = vim.loop.new_timer()
   local shutdown_started = false

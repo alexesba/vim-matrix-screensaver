@@ -30,6 +30,8 @@ local defaults = vim.tbl_extend('force', {
   min_delay = 1,
   max_delay = 6,
   tick_ms = 25,
+  auto_start = false,
+  idle_seconds = 300,
 }, presets.balanced)
 
 function M.get()
@@ -44,6 +46,14 @@ function M.get()
     cfg = vim.tbl_deep_extend('force', vim.deepcopy(preset), cfg)
   end
   return cfg
+end
+
+---@param opts table|nil User settings from setup() or vim.g.matrix
+function M.apply(opts)
+  if type(opts) ~= 'table' or vim.tbl_isempty(opts) then
+    return
+  end
+  vim.g.matrix = vim.tbl_deep_extend('force', vim.g.matrix or {}, opts)
 end
 
 return M

@@ -58,7 +58,29 @@ Lower values animate faster. Both delay arguments must be positive integers and
 Configuration
 -------------
 
-Add this to your Neovim config to tune the screensaver globally:
+Use **`opts`** with lazy.nvim (recommended), or set **`vim.g.matrix`** directly
+for manual installs.
+
+### lazy.nvim
+
+```lua
+{
+  dir = "~/Projects/vim-matrix-screensaver",
+  name = "matrix",
+  main = "matrix",
+  lazy = false,
+  opts = {
+    density = "balanced",
+    charset = "movie",
+    auto_start = true,
+    idle_seconds = 60,
+  },
+}
+```
+
+lazy.nvim calls `require("matrix").setup(opts)` after the plugin loads.
+
+### vim.g.matrix
 
 ```lua
 vim.g.matrix = {
@@ -68,6 +90,8 @@ vim.g.matrix = {
   max_delay = 6,
   tick_ms = 25,
   ambient_chance = 5,  -- override preset: background flicker (0-100)
+  auto_start = false,  -- start Matrix automatically after idle time
+  idle_seconds = 300,  -- inactivity before auto-start (5 minutes)
 }
 ```
 
@@ -84,7 +108,25 @@ respawn reliably and start at random rows so columns stay long over time.
 Use `density = 'sparse'` for the original open look, or `density = 'dense'`
 for a busier screen.
 
-Settings in `vim.g.matrix` are reloaded each time you run `:Matrix`.
+Settings are reloaded each time you run `:Matrix`. `setup()` / `opts` also
+apply immediately for auto-start; you can re-run
+`:lua require('matrix').setup({ auto_start = true })` to change idle watching
+without restarting Neovim.
+
+Auto-start
+----------
+
+Set `auto_start = true` to launch the screensaver after a period of keyboard
+and mouse inactivity. Press any key to exit as usual; the idle timer restarts
+after you return to editing.
+
+    vim.g.matrix = {
+      auto_start = true,
+      idle_seconds = 600,  -- 10 minutes
+    }
+
+Activity such as cursor movement, typing, switching buffers, or focus changes
+resets the idle countdown. While Matrix is running, idle watching is paused.
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening
@@ -107,8 +149,10 @@ Project layout
 --------------
 
     plugin/matrix.lua          :Matrix command entry point
+    lua/matrix/init.lua        setup(opts) for lazy.nvim and manual config
     lua/matrix/screensaver.lua Animation engine
     lua/matrix/config.lua       User settings (vim.g.matrix)
+    lua/matrix/idle.lua         Optional auto-start on inactivity
     lua/matrix/charset.lua     Classic and movie glyph sets
     tests/matrix_spec.lua      Test suite
     scripts/run_tests.sh       Test runner

@@ -36,6 +36,24 @@ test('config provides balanced defaults', function()
   assert(cfg.min_delay == 1)
   assert(cfg.max_delay == 6)
   assert(cfg.ambient_chance == 5)
+  assert(cfg.auto_start == false)
+  assert(cfg.idle_seconds == 300)
+end)
+
+test('setup merges opts into vim.g.matrix', function()
+  vim.g.matrix = nil
+  require('matrix').setup({ auto_start = true, idle_seconds = 90 })
+  local cfg = require('matrix.config').get()
+  assert(cfg.auto_start == true)
+  assert(cfg.idle_seconds == 90)
+  vim.g.matrix = nil
+  require('matrix.idle').teardown()
+end)
+
+test('idle timeout converts seconds to milliseconds', function()
+  vim.g.matrix = { idle_seconds = 120 }
+  assert(require('matrix.idle')._test_idle_ms() == 120000)
+  vim.g.matrix = nil
 end)
 
 test('ambient flicker clears each frame', function()
