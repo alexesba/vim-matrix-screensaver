@@ -10,18 +10,19 @@ from the original Vimscript version.
 Features
 --------
 
-- Full-screen Matrix effect with stable green-on-black colors
-- Movie-style glyph set: halfwidth katakana, numerals, Latin letters, and symbols
-- Smooth animation without horizontal jitter
+- Full-screen Matrix rain with stable green-on-black colors
+- Movie glyph set (halfwidth katakana, numerals, symbols) or classic ASCII
+- Density presets: sparse, balanced, or dense
+- Optional auto-start after idle time
 - Hidden cursor and command line while running
-- Press any key to exit and restore your session
-- Optional speed tuning via command arguments
+- Press any key or click the mouse to exit and restore your session
+- Configurable via lazy.nvim `opts` or `vim.g.matrix`
 - Headless test suite and GitHub Actions CI
 
 Requirements
 ------------
 
-- Neovim 0.5+ (0.11+ recommended for best key-handling via `vim.on_key`)
+- Neovim 0.5+ (0.11+ recommended for `vim.on_key` exit handling)
 
 Install
 -------
@@ -36,30 +37,21 @@ Or add the repository root to `runtimepath`.
 Usage
 -----
 
-1. Open Neovim
-2. Run `:Matrix` to start the screensaver (movie glyph set by default)
-3. Press any key to exit
-
-Character sets:
-
     :Matrix              " movie glyphs (default)
-    :Matrix movie        " halfwidth katakana, numerals, Latin, symbols
-    :Matrix classic      " original printable ASCII rain
+    :Matrix classic      " printable ASCII rain
+    :Matrix movie 1 4    " optional: charset and delay range
 
-Optional arguments set the per-column delay range (defaults from `vim.g.matrix`,
-usually `1` and `6`):
+Press any key or click to exit.
 
-    :Matrix movie 1 3
-    :Matrix classic 2 6
-
-Lower values animate faster. Both delay arguments must be positive integers and
-`maxdelay` must be greater than `mindelay`. Command arguments override config.
+Command delay arguments override `min_delay` and `max_delay`. Both must be
+positive integers and `maxdelay` must be greater than `mindelay`.
 
 Configuration
 -------------
 
-Use **`opts`** with lazy.nvim (recommended), or set **`vim.g.matrix`** directly
-for manual installs.
+Use **`opts`** with lazy.nvim (recommended), or **`vim.g.matrix`** for manual installs.
+Settings reload each time you run `:Matrix`. Call `require('matrix').setup(opts)`
+to apply auto-start changes without restarting Neovim.
 
 ### lazy.nvim
 
@@ -67,7 +59,7 @@ for manual installs.
 {
   dir = "~/Projects/vim-matrix-screensaver",
   name = "matrix",
-  main = "matrix",
+  main = "matrix", -- required so lazy calls require("matrix").setup(opts)
   lazy = false,
   opts = {
     density = "balanced",
@@ -78,69 +70,54 @@ for manual installs.
 }
 ```
 
-lazy.nvim calls `require("matrix").setup(opts)` after the plugin loads.
+### Options
 
-### vim.g.matrix
+| Option | Default | Description |
+|--------|---------|-------------|
+| `density` | `balanced` | `sparse`, `balanced`, or `dense` |
+| `charset` | `movie` | `movie` or `classic` |
+| `min_delay` | `1` | Fastest per-column step (animation ticks) |
+| `max_delay` | `6` | Slowest per-column step range |
+| `tick_ms` | `25` | Milliseconds between animation frames |
+| `ambient_chance` | preset | Background flicker in empty cells (0–100); overrides preset |
+| `auto_start` | `false` | Start Matrix after idle time |
+| `idle_seconds` | `300` | Seconds of inactivity before auto-start |
+
+### Density presets
+
+| Preset | Ambient flicker | Trail depth |
+|--------|-----------------|-------------|
+| `sparse` | off | 1 cell |
+| `balanced` | dim, 5% | 2 cells |
+| `dense` | dim, 14% | 2 cells |
+
+All presets use full screen-height column tails. Ambient flicker clears each
+frame so it does not fill the screen.
+
+Example `vim.g.matrix`:
 
 ```lua
 vim.g.matrix = {
-  density = 'balanced',  -- 'sparse' (master-like), 'balanced', or 'dense'
-  charset = 'movie',
-  min_delay = 1,
-  max_delay = 6,
-  tick_ms = 25,
-  ambient_chance = 5,  -- override preset: background flicker (0-100)
-  auto_start = false,  -- start Matrix automatically after idle time
-  idle_seconds = 300,  -- inactivity before auto-start (5 minutes)
+  density = "sparse",
+  auto_start = true,
+  idle_seconds = 600,
 }
 ```
 
-Defaults use the `balanced` preset:
+Movie charset
+-------------
 
-| Preset    | Ambient | Tail length        | Trail depth |
-|-----------|---------|--------------------|-------------|
-| `sparse`  | off     | full screen height | 1 cell      |
-| `balanced`| dim, 5% | full screen height | 2 cells     |
-| `dense`   | dim, 14%| full screen height | 2 cells     |
-
-Ambient flicker clears each frame so the screen does not fill up. Streams
-respawn reliably and start at random rows so columns stay long over time.
-Use `density = 'sparse'` for the original open look, or `density = 'dense'`
-for a busier screen.
-
-Settings are reloaded each time you run `:Matrix`. `setup()` / `opts` also
-apply immediately for auto-start; you can re-run
-`:lua require('matrix').setup({ auto_start = true })` to change idle watching
-without restarting Neovim.
-
-Auto-start
-----------
-
-Set `auto_start = true` to launch the screensaver after a period of keyboard
-and mouse inactivity. Press any key to exit as usual; the idle timer restarts
-after you return to editing.
-
-    vim.g.matrix = {
-      auto_start = true,
-      idle_seconds = 600,  -- 10 minutes
-    }
-
-Activity such as cursor movement, typing, switching buffers, or focus changes
-resets the idle countdown. While Matrix is running, idle watching is paused.
-
-The movie charset uses single-width characters only so columns stay aligned in
-the terminal. Glyphs are based on frame-by-frame analysis from the opening
-digital rain in *The Matrix* (see [this Stack Exchange
+Glyphs are single-width so columns stay aligned. Based on analysis of the
+opening digital rain in *The Matrix* ([Stack Exchange
 thread](https://scifi.stackexchange.com/questions/137575/is-there-a-list-of-the-symbols-shown-in-the-matrixthe-symbols-rain-how-many)):
 
-- Halfwidth katakana such as `ｱ`, `ｦ`, `ﾊ` (a curated subset from the film)
-- Arabic digits `0–5`, `7–9` (digit `6` is absent in the movie rain)
-- The letter `Z` (the only Roman letter in the opening sequence)
+- Halfwidth katakana such as `ｱ`, `ｦ`, `ﾊ`
+- Arabic digits `0–5`, `7–9` (digit `6` is absent in the film rain)
+- The letter `Z`
 - Punctuation: `: . " = * + - < > ¦ | _ ?`
 - Kanji `日` when the terminal renders it at single width
 
-In the film the glyphs are mirrored horizontally because the viewer is inside
-the code looking out ([Simon Whiteley, production
+In the film the glyphs are mirrored horizontally ([Simon Whiteley, production
 designer](https://beforesandafters.com/secrets-of-the-matrix-code/)). Terminals
 cannot mirror fonts, so the plugin uses the documented Unicode characters
 directly.
@@ -148,11 +125,11 @@ directly.
 Project layout
 --------------
 
-    plugin/matrix.lua          :Matrix command entry point
-    lua/matrix/init.lua        setup(opts) for lazy.nvim and manual config
+    plugin/matrix.lua          :Matrix command
+    lua/matrix/init.lua        setup(opts)
     lua/matrix/screensaver.lua Animation engine
-    lua/matrix/config.lua       User settings (vim.g.matrix)
-    lua/matrix/idle.lua         Optional auto-start on inactivity
+    lua/matrix/config.lua      Settings (vim.g.matrix)
+    lua/matrix/idle.lua        Auto-start on inactivity
     lua/matrix/charset.lua     Classic and movie glyph sets
     tests/matrix_spec.lua      Test suite
     scripts/run_tests.sh       Test runner
@@ -162,19 +139,15 @@ Tests
 
     ./scripts/run_tests.sh
 
-Requires Neovim on your `PATH`. The suite verifies that the plugin loads,
-`:Matrix` defaults to the movie charset, ambient flicker does not accumulate,
-and the screensaver starts and stops cleanly in headless mode.
+Requires Neovim on your `PATH`.
 
 Known limitations
 -----------------
 
-- Requires a single-window layout when starting (same as the original plugin).
-  Save modified buffers before running to avoid extra windows on exit.
+- Requires a single-window layout when starting. Save modified buffers before
+  running to avoid extra windows on exit.
 - If the window is resized below 8 rows or 10 columns while running, the
   screensaver stops automatically.
-- Resizing below that threshold during a session can still lose buffer state,
-  as in the original — avoid making the window too small while it is active.
 
 License
 -------
