@@ -74,6 +74,15 @@ local hl_groups = {
   head = 'MatrixHead',
 }
 
+local function pad_line(chars)
+  local line = table.concat(chars)
+  local display_width = vim.fn.strdisplaywidth(line, 0)
+  if display_width < state.width then
+    line = line .. string.rep(' ', state.width - display_width)
+  end
+  return line
+end
+
 local function render_frame()
   local lines = {}
   for row = 1, state.height do
@@ -81,7 +90,7 @@ local function render_frame()
     for col = 1, state.width do
       chars[col] = state.grid[row][col]
     end
-    lines[row] = table.concat(chars)
+    lines[row] = pad_line(chars)
   end
 
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -140,8 +149,15 @@ local function init_grid()
   end
 end
 
+local function window_width()
+  if vim.fn.winnr('$') == 1 then
+    return vim.o.columns
+  end
+  return vim.api.nvim_win_get_width(state.win)
+end
+
 local function reset()
-  state.width = vim.api.nvim_win_get_width(state.win)
+  state.width = window_width()
   state.height = vim.api.nvim_win_get_height(state.win)
 
   if state.width < 10 or state.height < 8 then
@@ -253,6 +269,20 @@ local function init()
   vim.wo.spell = false
   vim.wo.sidescrolloff = 0
   vim.wo.scrolloff = 0
+  vim.wo.winbar = ''
+
+  save_option('winhighlight', vim.wo.winhighlight)
+  vim.wo.winhighlight = table.concat({
+    'Normal:MatrixHidden',
+    'NormalNC:MatrixHidden',
+    'SignColumn:MatrixHidden',
+    'EndOfBuffer:MatrixHidden',
+    'FoldColumn:MatrixHidden',
+    'WinSeparator:MatrixHidden',
+    'CursorLine:MatrixHidden',
+    'CursorColumn:MatrixHidden',
+    'Whitespace:MatrixHidden',
+  }, ',')
 
   save_option('ch', vim.o.ch)
   save_option('ls', vim.o.ls)
@@ -371,6 +401,10 @@ local function cleanup()
   vim.o.ve = saved.ve
   vim.o.ei = saved.ei
 
+  if saved.winhighlight ~= nil then
+    vim.wo.winhighlight = saved.winhighlight
+  end
+
   vim.cmd('source ' .. vim.fn.fnameescape(session_file))
   if saved.newbuf and vim.api.nvim_buf_is_valid(saved.newbuf) then
     vim.cmd('bwipe! ' .. saved.newbuf)
@@ -477,7 +511,7 @@ function M.start(args)
       return
     end
 
-    local width = vim.api.nvim_win_get_width(state.win)
+    local width = window_width()
     local height = vim.api.nvim_win_get_height(state.win)
     if width ~= state.width or height ~= state.height then
       reset()
