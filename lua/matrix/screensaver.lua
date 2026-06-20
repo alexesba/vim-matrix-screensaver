@@ -1,3 +1,5 @@
+local charset = require('matrix.charset')
+
 local M = {}
 
 local session_file = vim.fn.tempname()
@@ -378,24 +380,39 @@ local function cleanup()
   saved = {}
 end
 
+local CHARSETS = { classic = true, movie = true }
+
 local function parse_args(args)
-  if #args == 0 then
-    mindelay = 1
-    maxdelay = 5
-    return true
+  local selected_charset = 'movie'
+  local delay_args = {}
+  local idx = 1
+
+  if args[idx] and CHARSETS[args[idx]] then
+    selected_charset = args[idx]
+    idx = idx + 1
   end
 
-  if #args == 2 then
-    local values = { tonumber(args[1]), tonumber(args[2]) }
+  for i = idx, #args do
+    table.insert(delay_args, args[i])
+  end
+
+  if #delay_args == 0 then
+    mindelay = 1
+    maxdelay = 5
+    return true, selected_charset
+  end
+
+  if #delay_args == 2 then
+    local values = { tonumber(delay_args[1]), tonumber(delay_args[2]) }
     table.sort(values)
     if values[1] and values[2] and values[1] > 0 and values[2] > values[1] then
       mindelay = values[1]
       maxdelay = values[2]
-      return true
+      return true, selected_charset
     end
   end
 
-  return false
+  return false, selected_charset
 end
 
 function M.start(args)
@@ -404,23 +421,29 @@ function M.start(args)
     return
   end
 
-  if not parse_args(args) then
+  local ok, selected_charset = parse_args(args)
+  if not ok then
     vim.api.nvim_echo({
       {
-        'ERROR! Optional arguments must be two positive integers. Defaults are 1 and 5.',
+        'ERROR! Usage: :Matrix [classic|movie] [mindelay maxdelay]',
         'ErrorMsg',
       },
     }, true, {})
     return
   end
 
-  state.chars = {}
-  for code = 33, 126 do
-    if code ~= 95 and code ~= 96 then
-      table.insert(state.chars, vim.fn.nr2char(code))
-    end
-  end
+  state.chars = charset.get(selected_charset)
   state.char_count = #state.chars
+
+  if state.char_count == 0 then
+    vim.api.nvim_echo({
+      {
+        'ERROR! No displayable characters for charset: ' .. selected_charset,
+        'ErrorMsg',
+      },
+    }, true, {})
+    return
+  end
 
   if not init() then
     vim.api.nvim_echo({ { 'Can not create window', 'ErrorMsg' } }, true, {})
@@ -484,6 +507,27 @@ function M._test_prng(iterations)
     local col = n % 80
     assert(col >= 0 and col < 80, 'column index out of range: ' .. tostring(col))
   end
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_charset(name)
+  local chars = charset.get(name)
+  assert(#chars > 0, 'charset is empty: ' .. name)
+  for _, char in ipairs(chars) do
+    assert(vim.fn.strdisplaywidth(char, 0) == 1, 'double-width char in charset: ' .. char)
+  end
+  if name == 'movie' then
+    local has_katakana = false
+    for _, char in ipairs(chars) do
+      local code = vim.fn.char2nr(char)
+      if code >= 0xFF66 and code <= 0xFF9F then
+        has_katakana = true
+        break
+      end
+    end
+    assert(has_katakana, 'movie charset should include halfwidth katakana')
+  end
+  return chars
 end
 
 return M

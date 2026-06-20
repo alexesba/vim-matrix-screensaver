@@ -29,13 +29,22 @@ test('PRNG stays stable after many iterations', function()
   screensaver._test_prng(1000)
 end)
 
+test('movie charset uses single-width Matrix glyphs', function()
+  screensaver._test_charset('movie')
+end)
+
+test('classic charset uses printable ASCII', function()
+  local chars = screensaver._test_charset('classic')
+  assert(chars[1] == '!', 'classic charset should start with ASCII glyphs')
+end)
+
 test('Matrix rejects invalid arguments', function()
   screensaver.start({ 'not', 'numbers' })
   assert(not screensaver.running(), 'screensaver should not run with invalid args')
 end)
 
 test(':Matrix starts and fills the screen', function()
-  vim.cmd('Matrix')
+  vim.cmd('Matrix movie')
 
   local started = vim.wait(3000, function()
     return screensaver.running()
