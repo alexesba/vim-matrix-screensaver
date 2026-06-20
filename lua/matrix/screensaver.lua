@@ -1,12 +1,17 @@
 local charset = require('matrix.charset')
+local config = require('matrix.config')
 
 local M = {}
 
 local session_file = vim.fn.tempname()
 local SEED_MOD = 2147483647
 
-local mindelay = 2
-local maxdelay = 8
+local settings = config.get()
+local mindelay = settings.min_delay
+local maxdelay = settings.max_delay
+local tick_ms = settings.tick_ms
+local ambient_chance = settings.ambient_chance
+local default_charset = settings.charset
 
 local state = {}
 
@@ -16,10 +21,14 @@ local function rand()
 end
 
 local function random_char()
-  return state.chars[rand() % state.char_count + 1]
+  for _ = 1, 12 do
+    local char = state.chars[rand() % state.char_count + 1]
+    if vim.fn.strdisplaywidth(char, 0) == 1 then
+      return char
+    end
+  end
+  return '0'
 end
-
-local AMBIENT_CHANCE = 18 -- percent of empty cells that flicker each frame
 
 local function create_object(obj, min_reserve)
   min_reserve = min_reserve or 2
@@ -55,7 +64,7 @@ end
 local function add_ambient_chars()
   for row = 1, state.height do
     for col = 1, state.width do
-      if state.hls[row][col] == 'hidden' and rand() % 100 < AMBIENT_CHANCE then
+      if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
         state.grid[row][col] = random_char()
         state.hls[row][col] = 'normal'
       end
@@ -100,13 +109,25 @@ local hl_groups = {
   head = 'MatrixHead',
 }
 
-local function pad_line(chars)
+local function build_line(chars)
   local line = table.concat(chars)
   local display_width = vim.fn.strdisplaywidth(line, 0)
   if display_width < state.width then
     line = line .. string.rep(' ', state.width - display_width)
   end
   return line
+end
+
+local function char_byte_range(line, char_start, char_end)
+  local byte_start = vim.fn.byteidx(line, char_start)
+  if byte_start < 0 then
+    byte_start = 0
+  end
+  local byte_end = vim.fn.byteidx(line, char_end + 1)
+  if byte_end < 0 then
+    byte_end = #line
+  end
+  return byte_start, byte_end
 end
 
 local function render_frame()
@@ -116,27 +137,29 @@ local function render_frame()
     for col = 1, state.width do
       chars[col] = state.grid[row][col]
     end
-    lines[row] = pad_line(chars)
+    lines[row] = build_line(chars)
   end
 
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
 
   for row = 1, state.height do
+    local line = lines[row]
     local col = 1
     while col <= state.width do
       local hl = state.hls[row][col]
-      local start = col - 1
+      local hl_start = col
       while col <= state.width and state.hls[row][col] == hl do
         col = col + 1
       end
+      local byte_start, byte_end = char_byte_range(line, hl_start, col - 1)
       vim.api.nvim_buf_add_highlight(
         state.buf,
         state.ns,
         hl_groups[hl],
         row - 1,
-        start,
-        col - 1
+        byte_start,
+        byte_end
       )
     end
   end
@@ -449,7 +472,13 @@ end
 local CHARSETS = { classic = true, movie = true }
 
 local function parse_args(args)
-  local selected_charset = 'movie'
+  settings = config.get()
+  mindelay = settings.min_delay
+  maxdelay = settings.max_delay
+  tick_ms = settings.tick_ms
+  ambient_chance = settings.ambient_chance
+
+  local selected_charset = settings.charset
   local delay_args = {}
   local idx = 1
 
@@ -462,12 +491,6 @@ local function parse_args(args)
     table.insert(delay_args, args[i])
   end
 
-  if #delay_args == 0 then
-    mindelay = 2
-    maxdelay = 8
-    return true, selected_charset
-  end
-
   if #delay_args == 2 then
     local values = { tonumber(delay_args[1]), tonumber(delay_args[2]) }
     table.sort(values)
@@ -476,9 +499,14 @@ local function parse_args(args)
       maxdelay = values[2]
       return true, selected_charset
     end
+    return false, selected_charset
   end
 
-  return false, selected_charset
+  if #delay_args > 0 then
+    return false, selected_charset
+  end
+
+  return true, selected_charset
 end
 
 function M.start(args)
@@ -517,7 +545,6 @@ function M.start(args)
   end
 
   local timer = vim.loop.new_timer()
-  local tick_ms = 30
   local shutdown_started = false
 
   local function shutdown()

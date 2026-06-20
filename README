@@ -46,13 +46,31 @@ Character sets:
     :Matrix movie        " halfwidth katakana, numerals, Latin, symbols
     :Matrix classic      " original printable ASCII rain
 
-Optional arguments set the per-column delay range (defaults: `2` and `8`):
+Optional arguments set the per-column delay range (defaults from `vim.g.matrix`,
+usually `1` and `6`):
 
     :Matrix movie 1 3
     :Matrix classic 2 6
 
 Lower values animate faster. Both delay arguments must be positive integers and
-`maxdelay` must be greater than `mindelay`.
+`maxdelay` must be greater than `mindelay`. Command arguments override config.
+
+Configuration
+-------------
+
+Add this to your Neovim config to tune the screensaver globally:
+
+```lua
+vim.g.matrix = {
+  charset = 'movie',   -- 'movie' or 'classic'
+  min_delay = 1,       -- lower = faster column updates
+  max_delay = 6,       -- upper bound per-column delay
+  tick_ms = 25,        -- animation timer interval in milliseconds
+  ambient_chance = 18, -- background flicker density (0-100)
+}
+```
+
+Defaults are `min_delay = 1`, `max_delay = 6`, and `tick_ms = 25`.
 
 The movie charset uses single-width characters only so columns stay aligned in
 the terminal. Glyphs are based on frame-by-frame analysis from the opening
@@ -76,6 +94,7 @@ Project layout
 
     plugin/matrix.lua          :Matrix command entry point
     lua/matrix/screensaver.lua Animation engine
+    lua/matrix/config.lua       User settings (vim.g.matrix)
     lua/matrix/charset.lua     Classic and movie glyph sets
     tests/matrix_spec.lua      Test suite
     scripts/run_tests.sh       Test runner
