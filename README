@@ -11,6 +11,7 @@ Features
 --------
 
 - Full-screen Matrix effect with stable green-on-black colors
+- Movie-style glyph set: halfwidth katakana, numerals, Latin letters, and symbols
 - Smooth animation without horizontal jitter
 - Hidden cursor and command line while running
 - Press any key to exit and restore your session
@@ -36,21 +37,123 @@ Usage
 -----
 
 1. Open Neovim
-2. Run `:Matrix` to start the screensaver
+2. Run `:Matrix` to start the screensaver (movie glyph set by default)
 3. Press any key to exit
 
-Optional arguments set the per-column delay range (defaults: `1` and `5`):
+Character sets:
 
-    :Matrix 1 3
+    :Matrix              " movie glyphs (default)
+    :Matrix movie        " halfwidth katakana, numerals, Latin, symbols
+    :Matrix classic      " original printable ASCII rain
 
-Lower values animate faster. Both arguments must be positive integers and
-`maxdelay` must be greater than `mindelay`.
+Optional arguments set the per-column delay range (defaults from `vim.g.matrix`,
+usually `1` and `6`):
+
+    :Matrix movie 1 3
+    :Matrix classic 2 6
+
+Lower values animate faster. Both delay arguments must be positive integers and
+`maxdelay` must be greater than `mindelay`. Command arguments override config.
+
+Configuration
+-------------
+
+Use **`opts`** with lazy.nvim (recommended), or set **`vim.g.matrix`** directly
+for manual installs.
+
+### lazy.nvim
+
+```lua
+{
+  dir = "~/Projects/vim-matrix-screensaver",
+  name = "matrix",
+  main = "matrix",
+  lazy = false,
+  opts = {
+    density = "balanced",
+    charset = "movie",
+    auto_start = true,
+    idle_seconds = 60,
+  },
+}
+```
+
+lazy.nvim calls `require("matrix").setup(opts)` after the plugin loads.
+
+### vim.g.matrix
+
+```lua
+vim.g.matrix = {
+  density = 'balanced',  -- 'sparse' (master-like), 'balanced', or 'dense'
+  charset = 'movie',
+  min_delay = 1,
+  max_delay = 6,
+  tick_ms = 25,
+  ambient_chance = 5,  -- override preset: background flicker (0-100)
+  auto_start = false,  -- start Matrix automatically after idle time
+  idle_seconds = 300,  -- inactivity before auto-start (5 minutes)
+}
+```
+
+Defaults use the `balanced` preset:
+
+| Preset    | Ambient | Tail length        | Trail depth |
+|-----------|---------|--------------------|-------------|
+| `sparse`  | off     | full screen height | 1 cell      |
+| `balanced`| dim, 5% | full screen height | 2 cells     |
+| `dense`   | dim, 14%| full screen height | 2 cells     |
+
+Ambient flicker clears each frame so the screen does not fill up. Streams
+respawn reliably and start at random rows so columns stay long over time.
+Use `density = 'sparse'` for the original open look, or `density = 'dense'`
+for a busier screen.
+
+Settings are reloaded each time you run `:Matrix`. `setup()` / `opts` also
+apply immediately for auto-start; you can re-run
+`:lua require('matrix').setup({ auto_start = true })` to change idle watching
+without restarting Neovim.
+
+Auto-start
+----------
+
+Set `auto_start = true` to launch the screensaver after a period of keyboard
+and mouse inactivity. Press any key to exit as usual; the idle timer restarts
+after you return to editing.
+
+    vim.g.matrix = {
+      auto_start = true,
+      idle_seconds = 600,  -- 10 minutes
+    }
+
+Activity such as cursor movement, typing, switching buffers, or focus changes
+resets the idle countdown. While Matrix is running, idle watching is paused.
+
+The movie charset uses single-width characters only so columns stay aligned in
+the terminal. Glyphs are based on frame-by-frame analysis from the opening
+digital rain in *The Matrix* (see [this Stack Exchange
+thread](https://scifi.stackexchange.com/questions/137575/is-there-a-list-of-the-symbols-shown-in-the-matrixthe-symbols-rain-how-many)):
+
+- Halfwidth katakana such as `ｱ`, `ｦ`, `ﾊ` (a curated subset from the film)
+- Arabic digits `0–5`, `7–9` (digit `6` is absent in the movie rain)
+- The letter `Z` (the only Roman letter in the opening sequence)
+- Punctuation: `: . " = * + - < > ¦ | _ ?`
+- Kanji `日` when the terminal renders it at single width
+
+In the film the glyphs are mirrored horizontally because the viewer is inside
+the code looking out ([Simon Whiteley, production
+designer](https://beforesandafters.com/secrets-of-the-matrix-code/)). Terminals
+cannot mirror fonts, so the plugin uses the documented Unicode characters
+directly.
 
 Project layout
 --------------
 
     plugin/matrix.lua          :Matrix command entry point
+    lua/matrix/init.lua        setup(opts) for lazy.nvim and manual config
     lua/matrix/screensaver.lua Animation engine
+    lua/matrix/config.lua       User settings (vim.g.matrix)
+    lua/matrix/idle.lua         Optional auto-start on inactivity
+    lua/matrix/charset.lua     Classic and movie glyph sets
     tests/matrix_spec.lua      Test suite
     scripts/run_tests.sh       Test runner
 
@@ -60,8 +163,8 @@ Tests
     ./scripts/run_tests.sh
 
 Requires Neovim on your `PATH`. The suite verifies that the plugin loads,
-`:Matrix` is registered, the random number generator stays stable, and the
-screensaver starts and stops cleanly in headless mode.
+`:Matrix` defaults to the movie charset, ambient flicker does not accumulate,
+and the screensaver starts and stops cleanly in headless mode.
 
 Known limitations
 -----------------

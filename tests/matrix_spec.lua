@@ -29,6 +29,56 @@ test('PRNG stays stable after many iterations', function()
   screensaver._test_prng(1000)
 end)
 
+test('config provides balanced defaults', function()
+  local cfg = require('matrix.config').get()
+  assert(cfg.charset == 'movie')
+  assert(cfg.density == 'balanced')
+  assert(cfg.min_delay == 1)
+  assert(cfg.max_delay == 6)
+  assert(cfg.ambient_chance == 5)
+  assert(cfg.auto_start == false)
+  assert(cfg.idle_seconds == 300)
+end)
+
+test('setup merges opts into vim.g.matrix', function()
+  vim.g.matrix = nil
+  require('matrix').setup({ auto_start = true, idle_seconds = 90 })
+  local cfg = require('matrix.config').get()
+  assert(cfg.auto_start == true)
+  assert(cfg.idle_seconds == 90)
+  vim.g.matrix = nil
+  require('matrix.idle').teardown()
+end)
+
+test('idle timeout converts seconds to milliseconds', function()
+  vim.g.matrix = { idle_seconds = 120 }
+  assert(require('matrix.idle')._test_idle_ms() == 120000)
+  vim.g.matrix = nil
+end)
+
+test('ambient flicker clears each frame', function()
+  screensaver._test_ambient_decay()
+end)
+
+test('movie charset uses single-width Matrix glyphs', function()
+  local chars = screensaver._test_charset('movie')
+  local glyph_set = table.concat(chars)
+  assert(not glyph_set:find('6', 1, true), 'movie charset should omit digit 6')
+  assert(glyph_set:find('ｱ', 1, true), 'movie charset should include katakana')
+  assert(glyph_set:find('Z', 1, true), 'movie charset should include Z')
+end)
+
+test('classic charset uses printable ASCII', function()
+  local chars = screensaver._test_charset('classic')
+  assert(chars[1] == '!', 'classic charset should start with ASCII glyphs')
+end)
+
+test(':Matrix defaults to movie charset', function()
+  local ok, name = screensaver._test_parse_args({})
+  assert(ok, 'bare :Matrix args should parse')
+  assert(name == 'movie', 'default charset should be movie')
+end)
+
 test('Matrix rejects invalid arguments', function()
   screensaver.start({ 'not', 'numbers' })
   assert(not screensaver.running(), 'screensaver should not run with invalid args')

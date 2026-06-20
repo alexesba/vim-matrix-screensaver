@@ -1,10 +1,37 @@
+local charset = require('matrix.charset')
+local config = require('matrix.config')
+
 local M = {}
 
 local session_file = vim.fn.tempname()
 local SEED_MOD = 2147483647
 
-local mindelay = 1
-local maxdelay = 5
+local settings = config.get()
+
+local mindelay
+local maxdelay
+local tick_ms
+local ambient_chance
+local min_tail_length
+local tail_length_ratio
+local extra_streams
+local trail_depth
+local default_charset
+
+local function apply_settings(cfg)
+  cfg = cfg or config.get()
+  mindelay = cfg.min_delay
+  maxdelay = cfg.max_delay
+  tick_ms = cfg.tick_ms
+  ambient_chance = cfg.ambient_chance
+  min_tail_length = cfg.min_tail_length
+  tail_length_ratio = cfg.tail_length_ratio
+  extra_streams = cfg.extra_streams
+  trail_depth = cfg.trail_depth
+  default_charset = cfg.charset
+end
+
+apply_settings(settings)
 
 local state = {}
 
@@ -14,25 +41,48 @@ local function rand()
 end
 
 local function random_char()
-  return state.chars[rand() % state.char_count + 1]
+  for _ = 1, 12 do
+    local char = state.chars[rand() % state.char_count + 1]
+    if vim.fn.strdisplaywidth(char, 0) == 1 then
+      return char
+    end
+  end
+  return '0'
 end
 
-local function create_object(obj)
-  for _ = 1, state.columns * 4 do
-    local x = rand() % state.columns
-    if state.reserve[x] > 4 then
-      obj.x = x
+local function tail_length()
+  if tail_length_ratio >= 1.0 then
+    return rand() % state.height + min_tail_length
+  end
+  local span = math.max(1, math.floor(state.height * tail_length_ratio))
+  return rand() % span + min_tail_length
+end
+
+local function create_object(obj, min_reserve)
+  min_reserve = min_reserve or 4
+  local x = nil
+  for threshold = min_reserve, 1, -1 do
+    for _ = 1, state.columns * 4 do
+      local candidate = rand() % state.columns
+      if state.reserve[candidate] > threshold then
+        x = candidate
+        break
+      end
+    end
+    if x ~= nil then
       break
     end
   end
-  if obj.x == nil then
-    return
+  if x == nil then
+    return false
   end
+  obj.x = x
   obj.y = 1
   obj.t = rand() % state.speeds[obj.x]
   obj.head = rand() % 4
-  obj.len = rand() % state.height + 3
+  obj.len = tail_length()
   state.reserve[obj.x] = 1 - obj.len
+  return true
 end
 
 local function set_cell(row, col, char, hl)
@@ -41,6 +91,36 @@ local function set_cell(row, col, char, hl)
   end
   state.grid[row][col] = char
   state.hls[row][col] = hl
+  if state.ambient then
+    state.ambient[row][col] = false
+  end
+end
+
+local function decay_ambient()
+  if not state.ambient or ambient_chance <= 0 then
+    return
+  end
+  for row = 1, state.height do
+    for col = 1, state.width do
+      if state.ambient[row][col] then
+        state.grid[row][col] = ' '
+        state.hls[row][col] = 'hidden'
+        state.ambient[row][col] = false
+      end
+    end
+  end
+end
+
+local function add_ambient_chars()
+  for row = 1, state.height do
+    for col = 1, state.width do
+      if state.hls[row][col] == 'hidden' and rand() % 100 < ambient_chance then
+        state.grid[row][col] = random_char()
+        state.hls[row][col] = 'dim'
+        state.ambient[row][col] = true
+      end
+    end
+  end
 end
 
 local function draw_object(obj)
@@ -50,8 +130,11 @@ local function draw_object(obj)
   if y <= state.height then
     if obj.head ~= 0 then
       set_cell(y, x, random_char(), 'head')
-      if y > 1 then
-        set_cell(y - 1, x, random_char(), rand() % 2 == 0 and 'bright' or 'normal')
+      for offset = 1, trail_depth do
+        if y > offset then
+          local hl = offset == 1 and 'bright' or 'normal'
+          set_cell(y - offset, x, random_char(), hl)
+        end
       end
     else
       set_cell(y, x, random_char(), rand() % 2 == 0 and 'bright' or 'normal')
@@ -67,10 +150,32 @@ end
 
 local hl_groups = {
   hidden = 'MatrixHidden',
+  dim = 'MatrixDim',
   normal = 'MatrixNormal',
   bright = 'MatrixBold',
   head = 'MatrixHead',
 }
+
+local function build_line(chars)
+  local line = table.concat(chars)
+  local display_width = vim.fn.strdisplaywidth(line, 0)
+  if display_width < state.width then
+    line = line .. string.rep(' ', state.width - display_width)
+  end
+  return line
+end
+
+local function char_byte_range(line, char_start, char_end)
+  local byte_start = vim.fn.byteidx(line, char_start)
+  if byte_start < 0 then
+    byte_start = 0
+  end
+  local byte_end = vim.fn.byteidx(line, char_end + 1)
+  if byte_end < 0 then
+    byte_end = #line
+  end
+  return byte_start, byte_end
+end
 
 local function render_frame()
   local lines = {}
@@ -79,33 +184,37 @@ local function render_frame()
     for col = 1, state.width do
       chars[col] = state.grid[row][col]
     end
-    lines[row] = table.concat(chars)
+    lines[row] = build_line(chars)
   end
 
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
 
   for row = 1, state.height do
+    local line = lines[row]
     local col = 1
     while col <= state.width do
       local hl = state.hls[row][col]
-      local start = col - 1
+      local hl_start = col
       while col <= state.width and state.hls[row][col] == hl do
         col = col + 1
       end
+      local byte_start, byte_end = char_byte_range(line, hl_start, col - 1)
       vim.api.nvim_buf_add_highlight(
         state.buf,
         state.ns,
         hl_groups[hl],
         row - 1,
-        start,
-        col - 1
+        byte_start,
+        byte_end
       )
     end
   end
 end
 
 local function animate()
+  decay_ambient()
+
   for _, obj in ipairs(state.objects) do
     if obj.t <= 0 then
       if obj.y - obj.len <= state.height then
@@ -113,33 +222,42 @@ local function animate()
         obj.t = state.speeds[obj.x]
         obj.y = obj.y + 1
       else
-        create_object(obj)
-        if obj.x == nil then
-          obj.y = state.height + 1
+        if not create_object(obj) then
+          obj.t = rand() % 4 + 1
         end
       end
     end
     obj.t = obj.t - 1
   end
 
+  if ambient_chance > 0 then
+    add_ambient_chars()
+  end
   render_frame()
 end
 
 local function init_grid()
   state.grid = {}
   state.hls = {}
+  state.ambient = {}
   for row = 1, state.height do
     state.grid[row] = {}
     state.hls[row] = {}
+    state.ambient[row] = {}
     for col = 1, state.width do
       state.grid[row][col] = ' '
       state.hls[row][col] = 'hidden'
+      state.ambient[row][col] = false
     end
   end
 end
 
+local function window_width()
+  return vim.api.nvim_win_get_width(state.win)
+end
+
 local function reset()
-  state.width = vim.api.nvim_win_get_width(state.win)
+  state.width = window_width()
   state.height = vim.api.nvim_win_get_height(state.win)
 
   if state.width < 10 or state.height < 8 then
@@ -162,8 +280,20 @@ local function reset()
   local obj_count = math.max(0, state.columns - 2)
   for _ = 1, obj_count do
     local obj = {}
-    create_object(obj)
-    if obj.x ~= nil then
+    if create_object(obj) then
+      obj.y = rand() % state.height + 1
+      table.insert(state.objects, obj)
+    end
+  end
+
+  local extras = extra_streams
+  if extras < 0 then
+    extras = math.max(2, math.floor(state.columns / 8))
+  end
+  for _ = 1, extras do
+    local obj = {}
+    if create_object(obj, 2) then
+      obj.y = rand() % state.height + 1
       table.insert(state.objects, obj)
     end
   end
@@ -174,6 +304,7 @@ end
 local function define_highlights()
   local highlights = {
     MatrixHidden = { fg = '#000000', bg = '#000000', ctermfg = 'Black', ctermbg = 'Black' },
+    MatrixDim = { fg = '#004400', bg = '#000000', ctermfg = 'Black', ctermbg = 'Black' },
     MatrixNormal = { fg = '#008000', bg = '#000000', ctermfg = 'DarkGreen', ctermbg = 'Black' },
     MatrixBold = { fg = '#00ff00', bg = '#000000', ctermfg = 'LightGreen', ctermbg = 'Black' },
     MatrixHead = { fg = '#ffffff', bg = '#000000', ctermfg = 'White', ctermbg = 'Black' },
@@ -251,6 +382,20 @@ local function init()
   vim.wo.spell = false
   vim.wo.sidescrolloff = 0
   vim.wo.scrolloff = 0
+  vim.wo.winbar = ''
+
+  save_option('winhighlight', vim.wo.winhighlight)
+  vim.wo.winhighlight = table.concat({
+    'Normal:MatrixHidden',
+    'NormalNC:MatrixHidden',
+    'SignColumn:MatrixHidden',
+    'EndOfBuffer:MatrixHidden',
+    'FoldColumn:MatrixHidden',
+    'WinSeparator:MatrixHidden',
+    'CursorLine:MatrixHidden',
+    'CursorColumn:MatrixHidden',
+    'Whitespace:MatrixHidden',
+  }, ',')
 
   save_option('ch', vim.o.ch)
   save_option('ls', vim.o.ls)
@@ -369,6 +514,10 @@ local function cleanup()
   vim.o.ve = saved.ve
   vim.o.ei = saved.ei
 
+  if saved.winhighlight ~= nil then
+    vim.wo.winhighlight = saved.winhighlight
+  end
+
   vim.cmd('source ' .. vim.fn.fnameescape(session_file))
   if saved.newbuf and vim.api.nvim_buf_is_valid(saved.newbuf) then
     vim.cmd('bwipe! ' .. saved.newbuf)
@@ -376,26 +525,46 @@ local function cleanup()
 
   drain_typeahead()
   saved = {}
+
+  pcall(function()
+    require('matrix.idle').resume()
+  end)
 end
 
+local CHARSETS = { classic = true, movie = true }
+
 local function parse_args(args)
-  if #args == 0 then
-    mindelay = 1
-    maxdelay = 5
-    return true
+  apply_settings(config.get())
+
+  local selected_charset = default_charset or 'movie'
+  local delay_args = {}
+  local idx = 1
+
+  if args[idx] and CHARSETS[args[idx]] then
+    selected_charset = args[idx]
+    idx = idx + 1
   end
 
-  if #args == 2 then
-    local values = { tonumber(args[1]), tonumber(args[2]) }
+  for i = idx, #args do
+    table.insert(delay_args, args[i])
+  end
+
+  if #delay_args == 2 then
+    local values = { tonumber(delay_args[1]), tonumber(delay_args[2]) }
     table.sort(values)
     if values[1] and values[2] and values[1] > 0 and values[2] > values[1] then
       mindelay = values[1]
       maxdelay = values[2]
-      return true
+      return true, selected_charset
     end
+    return false, selected_charset
   end
 
-  return false
+  if #delay_args > 0 then
+    return false, selected_charset
+  end
+
+  return true, selected_charset
 end
 
 function M.start(args)
@@ -404,31 +573,42 @@ function M.start(args)
     return
   end
 
-  if not parse_args(args) then
+  apply_settings(config.get())
+
+  local ok, selected_charset = parse_args(args)
+  if not ok then
     vim.api.nvim_echo({
       {
-        'ERROR! Optional arguments must be two positive integers. Defaults are 1 and 5.',
+        'ERROR! Usage: :Matrix [classic|movie] [mindelay maxdelay]',
         'ErrorMsg',
       },
     }, true, {})
     return
   end
 
-  state.chars = {}
-  for code = 33, 126 do
-    if code ~= 95 and code ~= 96 then
-      table.insert(state.chars, vim.fn.nr2char(code))
-    end
-  end
+  state.chars = charset.get(selected_charset)
   state.char_count = #state.chars
+
+  if state.char_count == 0 then
+    vim.api.nvim_echo({
+      {
+        'ERROR! No displayable characters for charset: ' .. selected_charset,
+        'ErrorMsg',
+      },
+    }, true, {})
+    return
+  end
 
   if not init() then
     vim.api.nvim_echo({ { 'Can not create window', 'ErrorMsg' } }, true, {})
     return
   end
 
+  pcall(function()
+    require('matrix.idle').pause()
+  end)
+
   local timer = vim.loop.new_timer()
-  local tick_ms = 20
   local shutdown_started = false
 
   local function shutdown()
@@ -454,7 +634,7 @@ function M.start(args)
       return
     end
 
-    local width = vim.api.nvim_win_get_width(state.win)
+    local width = window_width()
     local height = vim.api.nvim_win_get_height(state.win)
     if width ~= state.width or height ~= state.height then
       reset()
@@ -484,6 +664,60 @@ function M._test_prng(iterations)
     local col = n % 80
     assert(col >= 0 and col < 80, 'column index out of range: ' .. tostring(col))
   end
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_parse_args(args)
+  return parse_args(args)
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_charset(name)
+  local chars = charset.get(name)
+  assert(#chars > 0, 'charset is empty: ' .. name)
+  for _, char in ipairs(chars) do
+    assert(vim.fn.strdisplaywidth(char, 0) == 1, 'double-width char in charset: ' .. char)
+  end
+  if name == 'movie' then
+    local has_katakana = false
+    for _, char in ipairs(chars) do
+      local code = vim.fn.char2nr(char)
+      if code >= 0xFF66 and code <= 0xFF9F then
+        has_katakana = true
+        break
+      end
+    end
+    assert(has_katakana, 'movie charset should include halfwidth katakana')
+  end
+  return chars
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_ambient_decay()
+  apply_settings(config.get())
+  state.height = 2
+  state.width = 2
+  state.grid = {
+    { 'a', 'b' },
+    { 'c', 'd' },
+  }
+  state.hls = {
+    { 'normal', 'dim' },
+    { 'dim', 'normal' },
+  }
+  state.ambient = {
+    { false, true },
+    { true, false },
+  }
+
+  decay_ambient()
+
+  assert(state.grid[1][2] == ' ', 'ambient cell should clear')
+  assert(state.hls[1][2] == 'hidden', 'ambient cell should hide')
+  assert(not state.ambient[1][2], 'ambient flag should reset')
+  assert(state.grid[2][1] == ' ', 'ambient cell should clear')
+  assert(state.grid[1][1] == 'a', 'stream cell should remain')
+  assert(state.grid[2][2] == 'd', 'stream cell should remain')
 end
 
 return M
