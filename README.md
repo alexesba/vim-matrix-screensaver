@@ -3,7 +3,7 @@ vim-matrix-screensaver
 
 Matrix digital-rain screensaver for Neovim.
 
-![Matrix digital rain preview](docs/preview.gif)
+![Matrix movie glyph rain (default)](docs/preview-movie.gif)
 
 Originally by [Don Yang](https://uguu.org) ([upstream](https://github.com/uguu-org/vim-matrix-screensaver)).
 This fork rewrites the animation engine in Lua for Neovim and fixes rendering issues
@@ -44,6 +44,8 @@ Usage
     :Matrix movie 1 4    " optional: charset and delay range
 
 Press any key or click to exit.
+
+![Matrix classic ASCII rain](docs/preview-classic.gif)
 
 Command delay arguments override `min_delay` and `max_delay`. Both must be
 positive integers and `maxdelay` must be greater than `mindelay`.
