@@ -17,6 +17,8 @@ local tail_length_ratio
 local extra_streams
 local trail_depth
 local default_charset
+local font_safe
+local font_warning
 
 local function apply_settings(cfg)
   cfg = cfg or config.get()
@@ -29,6 +31,8 @@ local function apply_settings(cfg)
   extra_streams = cfg.extra_streams
   trail_depth = cfg.trail_depth
   default_charset = cfg.charset
+  font_safe = cfg.font_safe
+  font_warning = cfg.font_warning
 end
 
 apply_settings(settings)
@@ -41,7 +45,20 @@ local function rand()
 end
 
 local function random_char()
-  return state.chars[rand() % state.char_count + 1]
+  for _ = 1, 12 do
+    local char = state.chars[rand() % state.char_count + 1]
+    if vim.fn.strdisplaywidth(char, 0) == 1 then
+      return char
+    end
+  end
+  return state.chars[1] or '0'
+end
+
+local function ambient_attempts(width, chance)
+  if chance <= 0 or width <= 0 then
+    return 0
+  end
+  return math.floor(width * chance / 100)
 end
 
 local function mark_dirty(row)
@@ -120,7 +137,7 @@ local function decay_ambient()
 end
 
 local function add_ambient_chars()
-  local attempts = math.floor(state.width * state.height * ambient_chance / 100)
+  local attempts = ambient_attempts(state.width, ambient_chance)
   if attempts <= 0 then
     return
   end
@@ -218,20 +235,13 @@ local function hl_runs(row, offsets)
   return runs
 end
 
-local function render_row(row)
-  local line, offsets = build_row(row)
-  vim.api.nvim_buf_set_lines(state.buf, row - 1, row, false, { line })
-
+local function apply_row_extmarks(row, offsets)
   local runs = hl_runs(row, offsets)
-  local prev_marks = state.row_marks[row] or {}
   local marks = {}
 
   for i, run in ipairs(runs) do
-    local id = prev_marks[i]
-    if not id then
-      id = state.next_mark_id
-      state.next_mark_id = state.next_mark_id + 1
-    end
+    local id = state.next_mark_id
+    state.next_mark_id = state.next_mark_id + 1
     marks[i] = id
     vim.api.nvim_buf_set_extmark(state.buf, state.ns, row - 1, run.start_col, {
       id = id,
@@ -239,31 +249,38 @@ local function render_row(row)
       end_col = run.end_col,
       hl_group = run.hl_group,
       strict = false,
+      spell = false,
     })
-  end
-
-  for i = #runs + 1, #prev_marks do
-    pcall(vim.api.nvim_buf_del_extmark, state.buf, state.ns, prev_marks[i])
   end
 
   state.row_marks[row] = marks
 end
 
-local function render_frame(full)
-  if full then
-    mark_all_dirty()
-  end
-
-  if not state.dirty_rows or not next(state.dirty_rows) then
+local function render_frame()
+  if not state.buf or not state.grid or not state.height then
     return
   end
 
+  local lines = {}
+  local offsets_by_row = {}
+
   for row = 1, state.height do
-    if state.dirty_rows[row] then
-      render_row(row)
-    end
+    local line, offsets = build_row(row)
+    lines[row] = line
+    offsets_by_row[row] = offsets
   end
+
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
+  state.row_marks = {}
+  state.next_mark_id = 1
+
+  for row = 1, state.height do
+    apply_row_extmarks(row, offsets_by_row[row])
+  end
+
   state.dirty_rows = {}
+  pcall(vim.cmd, 'redraw!')
 end
 
 local function animate()
@@ -311,7 +328,7 @@ local function install_focus_handler()
       vim.schedule(function()
         if state.run then
           animate()
-          pcall(vim.cmd, 'redraw')
+          pcall(vim.cmd, 'redraw!')
         end
       end)
     end,
@@ -457,6 +474,7 @@ local function init()
   vim.bo.modifiable = true
   vim.bo.swapfile = false
   vim.bo.textwidth = 0
+  vim.bo.fileencoding = 'utf-8'
 
   vim.wo.number = false
   vim.wo.relativenumber = false
@@ -484,6 +502,7 @@ local function init()
     'Whitespace:MatrixHidden',
   }, ',')
 
+  save_option('ambiwidth', vim.o.ambiwidth)
   save_option('ch', vim.o.ch)
   save_option('ls', vim.o.ls)
   save_option('lz', vim.o.lz)
@@ -496,6 +515,7 @@ local function init()
   save_option('ru', vim.o.ru)
   save_option('sc', vim.o.sc)
 
+  vim.o.ambiwidth = 'single'
   vim.o.ch = 0
   vim.o.ls = 0
   vim.o.lz = true
@@ -602,6 +622,9 @@ local function cleanup()
     vim.o.titlestring = saved.titlestring
   end
 
+  if saved.ambiwidth ~= nil then
+    vim.o.ambiwidth = saved.ambiwidth
+  end
   vim.o.ch = saved.ch
   vim.o.ls = saved.ls
   vim.o.lz = saved.lz
@@ -629,7 +652,31 @@ local function cleanup()
   end)
 end
 
-local CHARSETS = { classic = true, movie = true }
+local CHARSETS = { classic = true, movie = true, movie_lite = true }
+
+local function resolve_charset(name)
+  if name == 'movie' and font_safe then
+    return 'movie_lite'
+  end
+  return name
+end
+
+local font_warning_shown = false
+
+local function warn_movie_font(name)
+  if name ~= 'movie' or not font_warning or font_warning_shown then
+    return
+  end
+  if charset.katakana_renders() then
+    return
+  end
+  font_warning_shown = true
+  vim.notify(
+    'Movie rain needs halfwidth katakana (U+FF66–U+FF9F) in your font, or use :Matrix movie_lite / font_safe = true.',
+    vim.log.levels.WARN,
+    { title = 'Matrix' }
+  )
+end
 
 local function parse_args(args)
   apply_settings(config.get())
@@ -662,6 +709,7 @@ local function parse_args(args)
     return false, selected_charset
   end
 
+  selected_charset = resolve_charset(selected_charset)
   return true, selected_charset
 end
 
@@ -677,13 +725,14 @@ function M.start(args)
   if not ok then
     vim.api.nvim_echo({
       {
-        'ERROR! Usage: :Matrix [classic|movie] [mindelay maxdelay]',
+        'ERROR! Usage: :Matrix [classic|movie|movie_lite] [mindelay maxdelay]',
         'ErrorMsg',
       },
     }, true, {})
     return
   end
 
+  selected_charset = resolve_charset(selected_charset)
   state.chars = charset.get(selected_charset)
   state.char_count = #state.chars
 
@@ -696,6 +745,8 @@ function M.start(args)
     }, true, {})
     return
   end
+
+  warn_movie_font(selected_charset)
 
   if not init() then
     vim.api.nvim_echo({ { 'Can not create window', 'ErrorMsg' } }, true, {})
@@ -788,6 +839,13 @@ function M._test_charset(name)
     assert(has_katakana, 'movie charset should include halfwidth katakana')
   end
   return chars
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_ambient_attempts(width, height, chance)
+  local column_scaled = ambient_attempts(width, chance)
+  local area_scaled = math.floor(width * height * chance / 100)
+  return column_scaled, area_scaled
 end
 
 ---@private Used by tests/matrix_spec.lua

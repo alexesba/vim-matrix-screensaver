@@ -60,6 +60,27 @@ test('ambient flicker clears each frame', function()
   screensaver._test_ambient_decay()
 end)
 
+test('ambient attempts scale with columns not area', function()
+  local column_scaled, area_scaled = screensaver._test_ambient_attempts(200, 60, 5)
+  assert(column_scaled == 10, 'expected 10 column-scaled attempts, got ' .. column_scaled)
+  assert(area_scaled == 600, 'area baseline should still be 600')
+  assert(column_scaled < area_scaled, 'column scaling should reduce large-screen work')
+end)
+
+test('katakana probe skips when no UI is attached', function()
+  if #vim.api.nvim_list_uis() == 0 then
+    assert(require('matrix.charset').katakana_renders() == true)
+  end
+end)
+
+test('movie_lite charset avoids katakana for ASCII-only fonts', function()
+  local chars = require('matrix.charset').get('movie_lite')
+  assert(#chars > 0, 'movie_lite charset should not be empty')
+  local glyph_set = table.concat(chars)
+  assert(glyph_set:find('0', 1, true), 'movie_lite should include digits')
+  assert(not glyph_set:find('ｱ', 1, true), 'movie_lite should omit katakana')
+end)
+
 test('movie charset uses single-width Matrix glyphs', function()
   local chars = screensaver._test_charset('movie')
   local glyph_set = table.concat(chars)
