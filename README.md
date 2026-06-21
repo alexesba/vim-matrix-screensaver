@@ -20,8 +20,10 @@ Features
 
 - Full-screen Matrix rain with stable green-on-black colors
 - Movie glyph set (halfwidth katakana, numerals, symbols) or classic ASCII
+- `movie_lite` fallback when your font lacks halfwidth katakana
 - Density presets: sparse, balanced, or dense
 - Optional auto-start after idle time
+- Adapts when the window is resized
 - Hidden cursor and command line while running
 - Press any key or click the mouse to exit and restore your session
 - Configurable via lazy.nvim `opts` or `vim.g.matrix`
@@ -47,6 +49,7 @@ Usage
 
     :Matrix              " movie glyphs (default)
     :Matrix classic      " printable ASCII rain
+    :Matrix movie_lite   " film symbols without katakana (ASCII-only fonts)
     :Matrix movie 1 4    " optional: charset and delay range
 
 Press any key or click to exit.
@@ -70,7 +73,8 @@ to apply auto-start changes without restarting Neovim.
   lazy = false,
   opts = {
     density = "balanced",        -- default
-    charset = "movie",           -- default ("movie" | "classic")
+    charset = "movie",           -- default ("movie" | "classic" | "movie_lite")
+    -- font_safe = true,          -- default: false; use movie_lite when charset is "movie"
     min_delay = 1,               -- default
     max_delay = 6,               -- default
     tick_ms = 33,                -- default (~30 fps)
@@ -86,7 +90,9 @@ to apply auto-start changes without restarting Neovim.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `density` | `balanced` | `sparse`, `balanced`, or `dense` |
-| `charset` | `movie` | `movie` or `classic` |
+| `charset` | `movie` | `movie`, `classic`, or `movie_lite` |
+| `font_safe` | `false` | When `charset` is `movie`, use `movie_lite` if katakana may not render |
+| `font_warning` | `true` | Notify once per session if movie katakana fail to render on screen |
 | `min_delay` | `1` | Fastest per-column step (animation ticks) |
 | `max_delay` | `6` | Slowest per-column step range |
 | `tick_ms` | `33` | Milliseconds between animation frames (~30 fps) |
@@ -133,6 +139,10 @@ designer](https://beforesandafters.com/secrets-of-the-matrix-code/)). Terminals
 cannot mirror fonts, so the plugin uses the documented Unicode characters
 directly.
 
+**Font requirement:** `movie` needs halfwidth katakana (U+FF66–U+FF9F) in your
+terminal font. Missing glyphs show as □ boxes. Use `:Matrix movie_lite` or
+`font_safe = true` for film-style numerals and symbols without katakana.
+
 Project layout
 --------------
 
@@ -156,9 +166,9 @@ Known limitations
 -----------------
 
 - Requires a single-window layout when starting. Save modified buffers before
-  running to avoid extra windows on exit.
-- If the window is resized below 8 rows or 10 columns while running, the
-  screensaver stops automatically.
+  running to avoid extra windows on exit when the session is restored.
+- Resizes with the window; rain reflows automatically. The screensaver stops
+  only if the window shrinks below 8 rows or 10 columns.
 
 License
 -------
