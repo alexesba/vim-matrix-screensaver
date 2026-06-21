@@ -13,6 +13,9 @@ local MOVIE_LATIN = 'Z'
 local MOVIE_PUNCTUATION = ':."=*+-<>¦|_?'
 local MOVIE_KANJI = '日'
 
+local KATAKANA_PROBE_SAMPLES = { 'ｱ', 'ｦ', 'ﾊ' }
+local REPLACEMENT_CHAR = 0xFFFD
+
 local function is_single_width(char)
   return vim.fn.strdisplaywidth(char, 0) == 1
 end
@@ -64,9 +67,101 @@ function M.movie()
   return filter_single_width(chars)
 end
 
+-- Film numerals, Z, and symbols only. Use when the terminal font lacks
+-- halfwidth katakana (U+FF66–U+FF9F) and would show □ tofu boxes instead.
+function M.movie_lite()
+  local chars = {}
+  vim.list_extend(chars, chars_from_string(MOVIE_DIGITS))
+  vim.list_extend(chars, chars_from_string(MOVIE_LATIN))
+  vim.list_extend(chars, chars_from_string(MOVIE_PUNCTUATION))
+  return filter_single_width(chars)
+end
+
+local function screen_pos_for_win(win)
+  if vim.fn.has('nvim-0.11') == 1 then
+    local pos = vim.fn.win_screenpos(win)
+    if type(pos) == 'table' and pos.row and pos.col then
+      return pos.row + 1, pos.col + 1
+    end
+  end
+  local col, row = vim.fn.winscreenpos(win)
+  if col and row and col > 0 and row > 0 then
+    return row, col
+  end
+  return nil, nil
+end
+
+--- Best-effort check: render sample katakana and read screenchar().
+--- Returns true when glyphs appear to render, or when probing is unavailable.
+function M.katakana_renders()
+  if #vim.api.nvim_list_uis() == 0 then
+    return true
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  local win
+  local function cleanup()
+    if win and vim.api.nvim_win_is_valid(win) then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+    if buf and vim.api.nvim_buf_is_valid(buf) then
+      pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end
+  end
+
+  local ok, renders = pcall(function()
+    vim.bo[buf].modifiable = true
+    vim.bo[buf].fileencoding = 'utf-8'
+
+    for _, char in ipairs(KATAKANA_PROBE_SAMPLES) do
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { char })
+      local width = math.max(1, vim.fn.strdisplaywidth(char, 0))
+      if not win or not vim.api.nvim_win_is_valid(win) then
+        win = vim.api.nvim_open_win(buf, false, {
+          relative = 'editor',
+          width = width,
+          height = 1,
+          row = 0,
+          col = 0,
+          style = 'minimal',
+          border = 'none',
+          noautocmd = true,
+          focusable = false,
+          zindex = 300,
+        })
+      else
+        vim.api.nvim_win_set_width(win, width)
+      end
+
+      vim.cmd('redraw!')
+      local screen_row, screen_col = screen_pos_for_win(win)
+      if not screen_row then
+        return true
+      end
+
+      local expected = vim.fn.char2nr(char)
+      local shown = vim.fn.screenchar(screen_row, screen_col)
+      if shown == 0 or shown == REPLACEMENT_CHAR or shown ~= expected then
+        return false
+      end
+    end
+    return true
+  end)
+
+  cleanup()
+
+  if not ok then
+    return true
+  end
+  return renders
+end
+
 function M.get(name)
   if name == 'classic' then
     return M.classic()
+  end
+  if name == 'movie_lite' then
+    return M.movie_lite()
   end
   return M.movie()
 end

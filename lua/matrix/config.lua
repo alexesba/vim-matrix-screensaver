@@ -27,6 +27,11 @@ local presets = {
 local defaults = vim.tbl_extend('force', {
   density = 'balanced',
   charset = 'movie',
+  -- When true, use movie_lite (ASCII film symbols) if charset is "movie".
+  -- Avoids □ boxes when the terminal font lacks halfwidth katakana.
+  font_safe = false,
+  -- When true, notify once per session if movie katakana fail to render on screen.
+  font_warning = true,
   min_delay = 1,
   max_delay = 6,
   tick_ms = 33,
