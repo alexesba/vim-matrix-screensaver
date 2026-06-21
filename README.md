@@ -3,7 +3,11 @@ vim-matrix-screensaver
 
 Matrix digital-rain screensaver for Neovim.
 
-![Matrix movie glyph rain (default)](docs/preview-movie.gif)
+**Movie look** — `:Matrix` (default)
+
+![Matrix movie glyph rain](docs/preview-movie.gif)
+
+**Classic look** — `:Matrix classic`
 
 ![Matrix classic ASCII rain](docs/preview-classic.gif)
 
