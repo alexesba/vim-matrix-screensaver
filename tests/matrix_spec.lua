@@ -60,6 +60,17 @@ test('ambient flicker clears each frame', function()
   screensaver._test_ambient_decay()
 end)
 
+test('adaptive tick stretches interval on large screens', function()
+  vim.g.matrix = { tick_ms = 33, adaptive_tick = true }
+  local small = screensaver._test_effective_tick_ms(80, 24)
+  local medium = screensaver._test_effective_tick_ms(160, 50)
+  local large = screensaver._test_effective_tick_ms(240, 80)
+  assert(small == 33, 'small screen should use base tick_ms')
+  assert(medium == 50, 'medium screen should use at least 50ms')
+  assert(large == 66, 'large screen should use at least 66ms')
+  vim.g.matrix = nil
+end)
+
 test('ambient attempts scale with columns not area', function()
   local column_scaled, area_scaled = screensaver._test_ambient_attempts(200, 60, 5)
   assert(column_scaled == 10, 'expected 10 column-scaled attempts, got ' .. column_scaled)

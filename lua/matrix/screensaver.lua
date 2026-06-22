@@ -11,6 +11,7 @@ local settings = config.get()
 local mindelay
 local maxdelay
 local tick_ms
+local adaptive_tick
 local ambient_chance
 local min_tail_length
 local tail_length_ratio
@@ -25,6 +26,7 @@ local function apply_settings(cfg)
   mindelay = cfg.min_delay
   maxdelay = cfg.max_delay
   tick_ms = cfg.tick_ms
+  adaptive_tick = cfg.adaptive_tick
   ambient_chance = cfg.ambient_chance
   min_tail_length = cfg.min_tail_length
   tail_length_ratio = cfg.tail_length_ratio
@@ -59,6 +61,29 @@ local function ambient_attempts(width, chance)
     return 0
   end
   return math.floor(width * chance / 100)
+end
+
+local function effective_tick_ms(width, height)
+  local base = tick_ms
+  if not adaptive_tick or not width or not height then
+    return base
+  end
+  local area = width * height
+  if area <= 1920 then
+    return base
+  end
+  if area <= 8000 then
+    return math.max(base, 50)
+  end
+  return math.max(base, 66)
+end
+
+local function request_redraw(full)
+  if full then
+    pcall(vim.cmd, 'redraw!')
+  else
+    pcall(vim.cmd, 'redraw')
+  end
 end
 
 local function mark_dirty(row)
@@ -280,7 +305,7 @@ local function render_frame()
   end
 
   state.dirty_rows = {}
-  pcall(vim.cmd, 'redraw!')
+  request_redraw(false)
 end
 
 local function animate()
@@ -328,7 +353,7 @@ local function install_focus_handler()
       vim.schedule(function()
         if state.run then
           animate()
-          pcall(vim.cmd, 'redraw!')
+          request_redraw(false)
         end
       end)
     end,
@@ -401,6 +426,7 @@ local function reset()
   end
 
   render_frame()
+  request_redraw(true)
 end
 
 local function define_highlights()
@@ -559,10 +585,10 @@ local function drain_typeahead()
   end
 end
 
-local function install_exit_keys(shutdown_fn, is_shutting_down)
+local function install_exit_keys(exit_fn, is_shutting_down)
   local opts = { buffer = state.buf, silent = true, nowait = true }
   for _, key in ipairs({ '<LeftMouse>', '<RightMouse>' }) do
-    pcall(vim.keymap.set, 'n', key, shutdown_fn, opts)
+    pcall(vim.keymap.set, 'n', key, exit_fn, opts)
   end
 
   if type(vim.on_key) == 'function' then
@@ -574,14 +600,14 @@ local function install_exit_keys(shutdown_fn, is_shutting_down)
       if not state.run then
         return _key
       end
-      vim.schedule(shutdown_fn)
+      exit_fn()
       return ''
     end, state.key_ns)
     return
   end
 
   for c = 32, 126 do
-    pcall(vim.keymap.set, 'n', vim.fn.nr2char(c), shutdown_fn, opts)
+    pcall(vim.keymap.set, 'n', vim.fn.nr2char(c), exit_fn, opts)
   end
   for _, key in ipairs({
     '<Esc>',
@@ -595,7 +621,7 @@ local function install_exit_keys(shutdown_fn, is_shutting_down)
     '<Left>',
     '<Right>',
   }) do
-    pcall(vim.keymap.set, 'n', key, shutdown_fn, opts)
+    pcall(vim.keymap.set, 'n', key, exit_fn, opts)
   end
 end
 
@@ -759,40 +785,83 @@ function M.start(args)
 
   local timer = vim.loop.new_timer()
   local shutdown_started = false
+  local cleanup_started = false
 
-  local function shutdown()
+  local function begin_shutdown()
     if shutdown_started then
       return
     end
     shutdown_started = true
     state.run = false
+    state.animating = false
     pcall(function()
       timer:stop()
       timer:close()
     end)
+  end
+
+  local function run_cleanup()
+    if cleanup_started then
+      return
+    end
+    cleanup_started = true
     cleanup()
   end
 
-  install_exit_keys(shutdown, function()
+  local function shutdown()
+    begin_shutdown()
+    run_cleanup()
+  end
+
+  install_exit_keys(function()
+    begin_shutdown()
+    vim.schedule(run_cleanup)
+  end, function()
     return shutdown_started
   end)
 
+  local schedule_next_tick
+
   local function on_tick()
-    if not state.run then
+    if not state.run or shutdown_started then
+      return
+    end
+    if state.animating then
+      return
+    end
+
+    state.animating = true
+    local ok, err = pcall(function()
+      local width = window_width()
+      local height = vim.api.nvim_win_get_height(state.win)
+      if width ~= state.width or height ~= state.height then
+        reset()
+      else
+        animate()
+      end
+    end)
+    state.animating = false
+
+    if not ok then
+      vim.notify('Matrix screensaver error: ' .. tostring(err), vim.log.levels.ERROR)
       shutdown()
       return
     end
 
-    local width = window_width()
-    local height = vim.api.nvim_win_get_height(state.win)
-    if width ~= state.width or height ~= state.height then
-      reset()
-    else
-      animate()
-    end
+    schedule_next_tick()
   end
 
-  timer:start(0, tick_ms, vim.schedule_wrap(on_tick))
+  schedule_next_tick = function()
+    if not state.run or shutdown_started then
+      return
+    end
+    local width = state.width or window_width()
+    local height = state.height or vim.api.nvim_win_get_height(state.win)
+    local delay = effective_tick_ms(width, height)
+    timer:start(delay, 0, vim.schedule_wrap(on_tick))
+  end
+
+  schedule_next_tick()
 end
 
 function M.stop()
@@ -839,6 +908,12 @@ function M._test_charset(name)
     assert(has_katakana, 'movie charset should include halfwidth katakana')
   end
   return chars
+end
+
+---@private Used by tests/matrix_spec.lua
+function M._test_effective_tick_ms(width, height)
+  apply_settings(config.get())
+  return effective_tick_ms(width, height)
 end
 
 ---@private Used by tests/matrix_spec.lua
