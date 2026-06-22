@@ -35,6 +35,8 @@ local defaults = vim.tbl_extend('force', {
   min_delay = 1,
   max_delay = 6,
   tick_ms = 33,
+  -- Stretch frame interval on large screens (width × height) to reduce backlog.
+  adaptive_tick = true,
   auto_start = false,
   idle_seconds = 300,
 }, presets.balanced)
